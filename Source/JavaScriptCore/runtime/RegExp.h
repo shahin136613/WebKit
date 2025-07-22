@@ -47,10 +47,7 @@ public:
     static constexpr DestructionMode needsDestruction = NeedsDestruction;
 
     template<typename CellType, SubspaceAccess mode>
-    static GCClient::IsoSubspace* subspaceFor(VM& vm)
-    {
-        return &vm.regExpSpace();
-    }
+    static GCClient::IsoSubspace* subspaceFor(VM&); // Defined in RegExpInlines.h
 
     JS_EXPORT_PRIVATE static RegExp* create(VM&, const String& pattern, OptionSet<Yarr::Flags>);
     static void destroy(JSCell*);
@@ -210,7 +207,7 @@ private:
 #endif
 
     struct RareData {
-        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(RareData);
         unsigned m_numDuplicateNamedCaptureGroups;
         Vector<String> m_captureGroupNames;
 

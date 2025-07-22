@@ -26,6 +26,7 @@
 #include "config.h"
 #include "URLPatternCanonical.h"
 
+#include "ExceptionOr.h"
 #include "URLDecomposition.h"
 #include "URLPattern.h"
 #include <wtf/URL.h>
@@ -34,7 +35,7 @@
 
 namespace WebCore {
 
-static constexpr auto dummyURLCharacters { "https://www.webkit.org"_s };
+static constexpr auto dummyURLCharacters { "https://w/"_s };
 
 static bool isValidIPv6HostCodePoint(auto codepoint)
 {
@@ -77,7 +78,7 @@ ExceptionOr<String> canonicalizeProtocol(StringView value, BaseURLStringType val
     if (valueType == BaseURLStringType::Pattern)
         return strippedValue.toString();
 
-    URL dummyURL(makeString(strippedValue, "://webkit.test"_s));
+    URL dummyURL(makeString(strippedValue, "://w/"_s));
 
     if (!dummyURL.isValid())
         return Exception { ExceptionCode::TypeError, "Invalid input to canonicalize a URL protocol string."_s };
@@ -147,7 +148,7 @@ ExceptionOr<String> canonicalizeIPv6Hostname(StringView value, BaseURLStringType
         result.append(toASCIILower(codepoint));
     }
 
-    return result.toString();
+    return String { result.toString() };
 }
 
 // https://urlpattern.spec.whatwg.org/#canonicalize-a-port, combined with https://urlpattern.spec.whatwg.org/#process-port-for-init
@@ -196,9 +197,7 @@ ExceptionOr<String> canonicalizePathname(StringView pathnameValue)
     // FIXME: Set state override to State::PathStart after URLParser supports state override.
     URL dummyURL(dummyURLCharacters);
     dummyURL.setPath(maybeAddSlashPrefix);
-
-    if (!dummyURL.isValid())
-        return Exception { ExceptionCode::TypeError, "Invalid input to canonicalize a URL path string."_s };
+    ASSERT(dummyURL.isValid());
 
     auto result = dummyURL.path();
     if (!hasLeadingSlash)
@@ -235,9 +234,7 @@ ExceptionOr<String> canonicalizeSearch(StringView value, BaseURLStringType value
 
     URL dummyURL(dummyURLCharacters);
     dummyURL.setQuery(strippedValue);
-
-    if (!dummyURL.isValid())
-        return Exception { ExceptionCode::TypeError, "Invalid input to canonicalize a URL search string."_s };
+    ASSERT(dummyURL.isValid());
 
     return dummyURL.query().toString();
 }
@@ -255,9 +252,7 @@ ExceptionOr<String> canonicalizeHash(StringView value, BaseURLStringType valueTy
 
     URL dummyURL(dummyURLCharacters);
     dummyURL.setFragmentIdentifier(strippedValue);
-
-    if (!dummyURL.isValid())
-        return Exception { ExceptionCode::TypeError, "Invalid input to canonicalize a URL hash string."_s };
+    ASSERT(dummyURL.isValid());
 
     return dummyURL.fragmentIdentifier().toString();
 }

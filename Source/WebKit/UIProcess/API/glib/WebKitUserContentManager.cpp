@@ -22,11 +22,14 @@
 
 #include "APISerializedScriptValue.h"
 #include "InjectUserScriptImmediately.h"
+#include "JavaScriptEvaluationResult.h"
 #include "WebKitInitialize.h"
 #include "WebKitUserContentManagerPrivate.h"
 #include "WebKitUserContentPrivate.h"
 #include "WebKitWebContextPrivate.h"
 #include "WebScriptMessageHandler.h"
+#include <jsc/JSCContextPrivate.h>
+#include <jsc/JSCValuePrivate.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/glib/GRefPtr.h>
@@ -288,8 +291,9 @@ struct _WebKitScriptMessageReply {
 
     void sendValue(JSCValue* value)
     {
-        auto serializedValue = API::SerializedScriptValue::createFromJSCValue(value);
-        completionHandler(JavaScriptEvaluationResult { serializedValue->dataReference() });
+        if (auto result = JavaScriptEvaluationResult::extract(jscContextGetJSContext(API::SerializedScriptValue::sharedJSCContext()), jscValueGetJSValue(value)))
+            return completionHandler(WTFMove(*result));
+        completionHandler(makeUnexpected(String()));
     }
 
     void sendErrorMessage(const char* errorMessage)
@@ -407,17 +411,16 @@ public:
 
     void didPostMessage(WebPageProxy&, FrameInfoData&&, API::ContentWorld&, JavaScriptEvaluationResult&& jsMessage) override
     {
-        Ref serializedScriptValue = API::SerializedScriptValue::createFromWireBytes(jsMessage.wireBytes());
         if (!m_manager) {
             g_critical("Script message %s received after the WebKitUserContentManager has been destroyed. You must unregister the message handler!", g_quark_to_string(m_handlerName));
             return;
         }
 
 #if ENABLE(2022_GLIB_API)
-        GRefPtr<JSCValue> value = API::SerializedScriptValue::deserialize(serializedScriptValue->internalRepresentation());
+        GRefPtr<JSCValue> value = jsMessage.toJSC();
         g_signal_emit(m_manager.get(), signals[SCRIPT_MESSAGE_RECEIVED], m_handlerName, value.get());
 #else
-        WebKitJavascriptResult* jsResult = webkitJavascriptResultCreate(serializedScriptValue->internalRepresentation());
+        WebKitJavascriptResult* jsResult = webkitJavascriptResultCreate(WTFMove(jsMessage));
         g_signal_emit(m_manager.get(), signals[SCRIPT_MESSAGE_RECEIVED], m_handlerName, jsResult);
         webkit_javascript_result_unref(jsResult);
 #endif
@@ -436,8 +439,7 @@ public:
         }
 
         WebKitScriptMessageReply* message = webKitScriptMessageReplyCreate(WTFMove(completionHandler));
-        Ref serializedScriptValue = API::SerializedScriptValue::createFromWireBytes(jsMessage.wireBytes());
-        GRefPtr<JSCValue> value = API::SerializedScriptValue::deserialize(serializedScriptValue->internalRepresentation());
+        GRefPtr<JSCValue> value = jsMessage.toJSC();
         gboolean returnValue;
         g_signal_emit(m_manager.get(), signals[SCRIPT_MESSAGE_WITH_REPLY_RECEIVED], m_handlerName, value.get(), message, &returnValue);
         webkit_script_message_reply_unref(message);

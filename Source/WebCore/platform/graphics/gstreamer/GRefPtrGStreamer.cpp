@@ -34,10 +34,6 @@
 #undef GST_USE_UNSTABLE_API
 #endif
 
-#if USE(GSTREAMER_TRANSCODER)
-#include <gst/transcoder/gsttranscoder.h>
-#endif
-
 namespace WTF {
 
 template<> GRefPtr<GstMiniObject> adoptGRef(GstMiniObject* ptr)
@@ -528,6 +524,28 @@ void derefGPtr<GstDeviceMonitor>(GstDeviceMonitor* ptr)
 }
 
 template<>
+GRefPtr<GstDeviceProvider> adoptGRef(GstDeviceProvider* ptr)
+{
+    return GRefPtr<GstDeviceProvider>(ptr, GRefPtrAdopt);
+}
+
+template<>
+GstDeviceProvider* refGPtr<GstDeviceProvider>(GstDeviceProvider* ptr)
+{
+    if (ptr)
+        gst_object_ref(GST_OBJECT_CAST(ptr));
+
+    return ptr;
+}
+
+template<>
+void derefGPtr<GstDeviceProvider>(GstDeviceProvider* ptr)
+{
+    if (ptr)
+        gst_object_unref(ptr);
+}
+
+template<>
 GRefPtr<GstDevice> adoptGRef(GstDevice* ptr)
 {
     return GRefPtr<GstDevice>(ptr, GRefPtrAdopt);
@@ -745,6 +763,28 @@ void derefGPtr<GstEncodingProfile>(GstEncodingProfile* ptr)
         gst_encoding_profile_unref(ptr);
 }
 
+template<>
+GRefPtr<GstEncodingContainerProfile> adoptGRef(GstEncodingContainerProfile* ptr)
+{
+    return GRefPtr<GstEncodingContainerProfile>(ptr, GRefPtrAdopt);
+}
+
+template<>
+GstEncodingContainerProfile* refGPtr<GstEncodingContainerProfile>(GstEncodingContainerProfile* ptr)
+{
+    if (ptr)
+        g_object_ref(ptr);
+
+    return ptr;
+}
+
+template<>
+void derefGPtr<GstEncodingContainerProfile>(GstEncodingContainerProfile* ptr)
+{
+    if (ptr)
+        g_object_unref(ptr);
+}
+
 #if USE(GSTREAMER_WEBRTC)
 
 template <> GRefPtr<GstWebRTCRTPReceiver> adoptGRef(GstWebRTCRTPReceiver* ptr)
@@ -919,54 +959,6 @@ template<> void derefGPtr<GstWebRTCICE>(GstWebRTCICE* ptr)
 }
 
 #endif // USE(GSTREAMER_WEBRTC)
-
-#if USE(GSTREAMER_TRANSCODER)
-
-template<>
-GRefPtr<GstTranscoder> adoptGRef(GstTranscoder* ptr)
-{
-    return GRefPtr<GstTranscoder>(ptr, GRefPtrAdopt);
-}
-
-template<>
-GstTranscoder* refGPtr<GstTranscoder>(GstTranscoder* ptr)
-{
-    if (ptr)
-        gst_object_ref(GST_OBJECT_CAST(ptr));
-
-    return ptr;
-}
-
-template<>
-void derefGPtr<GstTranscoder>(GstTranscoder* ptr)
-{
-    if (ptr)
-        gst_object_unref(ptr);
-}
-
-template<>
-GRefPtr<GstTranscoderSignalAdapter> adoptGRef(GstTranscoderSignalAdapter* ptr)
-{
-    return GRefPtr<GstTranscoderSignalAdapter>(ptr, GRefPtrAdopt);
-}
-
-template<>
-GstTranscoderSignalAdapter* refGPtr<GstTranscoderSignalAdapter>(GstTranscoderSignalAdapter* ptr)
-{
-    if (ptr)
-        g_object_ref(G_OBJECT(ptr));
-
-    return ptr;
-}
-
-template<>
-void derefGPtr<GstTranscoderSignalAdapter>(GstTranscoderSignalAdapter* ptr)
-{
-    if (ptr)
-        g_object_unref(ptr);
-}
-
-#endif // USE(GSTREAMER_TRANSCODER)
 
 } // namespace WTF
 

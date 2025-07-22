@@ -32,16 +32,6 @@
 #include "Utilities.h"
 #include "WTFTestUtilities.h"
 
-#if USE(APPKIT)
-OBJC_CLASS NSImage;
-using CocoaImage = NSImage;
-using CocoaColor = NSColor;
-#else
-OBJC_CLASS UIImage;
-using CocoaImage = UIImage;
-using CocoaColor = UIColor;
-#endif
-
 #ifdef __OBJC__
 
 @class TestWebExtensionTab;
@@ -73,6 +63,8 @@ using CocoaColor = UIColor;
 
 - (void)sendTestMessage:(NSString *)message;
 - (void)sendTestMessage:(NSString *)message withArgument:(id)argument;
+- (void)sendTestStartedWithArgument:(id)argument;
+- (void)sendTestFinishedWithArgument:(id)argument;
 
 - (void)loadAndRun;
 
@@ -121,7 +113,7 @@ using CocoaColor = UIColor;
 - (instancetype)initWithExtensionController:(WKWebExtensionController *)extensionController usesPrivateBrowsing:(BOOL)usesPrivateBrowsing NS_DESIGNATED_INITIALIZER;
 
 @property (nonatomic, copy) NSArray<TestWebExtensionTab *> *tabs;
-@property (nonatomic, strong) TestWebExtensionTab * activeTab;
+@property (nonatomic, strong) TestWebExtensionTab *activeTab;
 
 - (TestWebExtensionTab *)openNewTab;
 - (TestWebExtensionTab *)openNewTabAtIndex:(NSUInteger)index;
@@ -168,10 +160,6 @@ NSData *makePNGData(CGSize, SEL colorSelector);
 enum class Appearance { Light, Dark };
 
 void performWithAppearance(Appearance, void (^block)(void));
-
-CocoaColor *pixelColor(CocoaImage *, CGPoint = CGPointZero);
-CocoaColor *toSRGBColor(CocoaColor *);
-bool compareColors(CocoaColor *, CocoaColor *);
 
 #endif
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #include "IDBResourceIdentifier.h"
 #include "IndexKey.h"
 #include "TransactionOperation.h"
+#include <pal/SessionID.h>
 #include <wtf/CrossThreadQueue.h>
 #include <wtf/CrossThreadTask.h>
 #include <wtf/Forward.h>
@@ -162,7 +163,7 @@ private:
     void scheduleMainThreadTasks();
     void handleMainThreadTasks();
 
-    CheckedRef<IDBConnectionToServer> m_connectionToServer;
+    const CheckedRef<IDBConnectionToServer> m_connectionToServer;
     IDBConnectionIdentifier m_serverConnectionIdentifier;
 
     Lock m_databaseConnectionMapLock;

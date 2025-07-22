@@ -107,6 +107,16 @@ struct MultiDeleteByOffsetData {
     bool allVariantsStoreEmpty() const;
 };
 
+struct MultiGetByValData {
+    ArrayModes m_arrayModes { };
+    DFG::ArrayMode m_arrayMode { };
+};
+
+struct MultiPutByValData {
+    ArrayModes m_arrayModes { };
+    DFG::ArrayMode m_arrayMode { };
+};
+
 struct MatchStructureVariant {
     RegisteredStructure structure;
     bool result;
@@ -152,28 +162,23 @@ struct DataViewData {
 static_assert(sizeof(DataViewData) == sizeof(uint64_t));
 
 struct BranchTarget {
-    BranchTarget()
-        : block(nullptr)
-        , count(PNaN)
-    {
-    }
-    
+    BranchTarget() = default;
     explicit BranchTarget(BasicBlock* block)
         : block(block)
         , count(PNaN)
     {
     }
-    
+
     void setBytecodeIndex(unsigned bytecodeIndex)
     {
         block = std::bit_cast<BasicBlock*>(static_cast<uintptr_t>(bytecodeIndex));
     }
     unsigned bytecodeIndex() const { return std::bit_cast<uintptr_t>(block); }
-    
+
     void dump(PrintStream&) const;
-    
-    BasicBlock* block;
-    float count;
+
+    BasicBlock* block { nullptr };
+    float count { PNaN };
 };
 
 struct BranchData {
@@ -238,18 +243,19 @@ struct SwitchData {
     // Initializes most fields to obviously invalid values. Anyone
     // constructing this should make sure to initialize everything they
     // care about manually.
-    SwitchData()
-        : switchTableIndex(UINT_MAX)
-        , kind(static_cast<SwitchKind>(-1))
-        , didUseJumpTable(false)
+    SwitchData() = default;
+
+    bool hasSwitchTableIndex() const { return switchTableIndex != std::numeric_limits<size_t>::max(); }
+    void clearSwitchTableIndex()
     {
+        switchTableIndex = std::numeric_limits<size_t>::max();
     }
-    
+
     Vector<SwitchCase> cases;
     BranchTarget fallThrough;
-    size_t switchTableIndex;
-    SwitchKind kind;
-    bool didUseJumpTable;
+    size_t switchTableIndex { std::numeric_limits<size_t>::max() };
+    SwitchKind kind { static_cast<SwitchKind>(-1) };
+    bool didUseJumpTable { false };
 };
 
 struct EntrySwitchData {
@@ -317,7 +323,7 @@ enum class BucketOwnerType : uint32_t {
 // Node represents a single operation in the data flow graph.
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(DFGNode);
 struct Node {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(DFGNode);
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(DFGNode, DFGNode);
 public:
     static const char HashSetTemplateInstantiationString[];
     
@@ -695,6 +701,20 @@ public:
         ASSERT(m_op == PutById || m_op == PutByIdDirect || m_op == PutByIdFlush || m_op == PutPrivateNameById || m_op == PutByIdMegamorphic);
         m_opInfo = data;
         m_op = MultiPutByOffset;
+    }
+
+    void convertToMultiGetByVal(MultiGetByValData* data)
+    {
+        ASSERT(m_op == GetByVal);
+        m_opInfo = data;
+        m_op = MultiGetByVal;
+    }
+
+    void convertToMultiPutByVal(MultiPutByValData* data)
+    {
+        ASSERT(m_op == PutByVal);
+        m_opInfo = data;
+        m_op = MultiPutByVal;
     }
 
     void convertToNewRegExp(FrozenValue* regExp, Edge index)
@@ -1366,6 +1386,7 @@ public:
         case ValuePow:
         case DoubleAsInt32:
         case Int52Rep:
+        case MultiGetByVal:
             return result;
         default:
             return result & ~NodeBytecodeNeedsNegZero;
@@ -1710,6 +1731,7 @@ public:
         case ValueBitNot:
         case ValueBitLShift:
         case ValueBitRShift:
+        case ValueBitURShift:
         case ValueNegate:
             return true;
         default:
@@ -2041,6 +2063,7 @@ public:
         case GetByValMegamorphic:
         case GetByValWithThis:
         case GetByValWithThisMegamorphic:
+        case MultiGetByVal:
         case GetPrivateName:
         case GetPrivateNameById:
         case Call:
@@ -2072,6 +2095,7 @@ public:
         case RegExpTestInline:
         case RegExpMatchFast:
         case RegExpMatchFastGlobal:
+        case RegExpSearch:
         case GetGlobalVar:
         case GetGlobalLexicalVariable:
         case StringReplace:
@@ -2450,7 +2474,29 @@ public:
         ASSERT(hasMultiDeleteByOffsetData());
         return *m_opInfo.as<MultiDeleteByOffsetData*>();
     }
-    
+
+    bool hasMultiGetByValData()
+    {
+        return op() == MultiGetByVal;
+    }
+
+    MultiGetByValData& multiGetByValData()
+    {
+        ASSERT(hasMultiGetByValData());
+        return *m_opInfo.as<MultiGetByValData*>();
+    }
+
+    bool hasMultiPutByValData()
+    {
+        return op() == MultiPutByVal;
+    }
+
+    MultiPutByValData& multiPutByValData()
+    {
+        ASSERT(hasMultiPutByValData());
+        return *m_opInfo.as<MultiPutByValData*>();
+    }
+
     bool hasMatchStructureData()
     {
         return op() == MatchStructure;
@@ -2574,7 +2620,31 @@ public:
             return false;
         }
     }
-    
+
+    bool hasArrayModes()
+    {
+        switch (op()) {
+        case MultiGetByVal:
+        case MultiPutByVal:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    ArrayModes arrayModes()
+    {
+        ASSERT(hasArrayModes());
+        switch (op()) {
+        case MultiGetByVal:
+            return multiGetByValData().m_arrayModes;
+        case MultiPutByVal:
+            return multiPutByValData().m_arrayModes;
+        default:
+            return { };
+        }
+    }
+
     bool hasArrayMode()
     {
         switch (op()) {
@@ -2594,6 +2664,8 @@ public:
         case EnumeratorPutByVal:
         case GetByVal:
         case GetByValMegamorphic:
+        case MultiGetByVal:
+        case MultiPutByVal:
         case EnumeratorNextUpdateIndexAndMode:
         case EnumeratorGetByVal:
         case EnumeratorInByVal:
@@ -2630,26 +2702,46 @@ public:
     ArrayMode arrayMode()
     {
         ASSERT(hasArrayMode());
-        if (op() == ArrayifyToStructure)
+        switch (op()) {
+        case ArrayifyToStructure:
             return ArrayMode::fromWord(m_opInfo2.as<uint32_t>());
-        if (op() == NewArrayWithSpecies)
+        case NewArrayWithSpecies:
             return ArrayMode::fromWord(newArrayWithSpeciesData().arrayMode);
-        return ArrayMode::fromWord(m_opInfo.as<uint32_t>());
+        case MultiGetByVal:
+            return multiGetByValData().m_arrayMode;
+        case MultiPutByVal:
+            return multiPutByValData().m_arrayMode;
+        default:
+            return ArrayMode::fromWord(m_opInfo.as<uint32_t>());
+        }
     }
-    
+
     bool setArrayMode(ArrayMode arrayMode)
     {
         ASSERT(hasArrayMode());
         if (this->arrayMode() == arrayMode)
             return false;
-        if (op() == NewArrayWithSpecies) {
+
+        switch (op()) {
+        case ArrayifyToStructure:
+            m_opInfo2 = arrayMode.asWord();
+            return true;
+        case NewArrayWithSpecies: {
             auto data = newArrayWithSpeciesData();
             data.arrayMode = arrayMode.asWord();
             m_opInfo = data.asQuadWord();
             return true;
         }
-        m_opInfo = arrayMode.asWord();
-        return true;
+        case MultiGetByVal:
+            multiGetByValData().m_arrayMode = arrayMode;
+            return true;
+        case MultiPutByVal:
+            multiPutByValData().m_arrayMode = arrayMode;
+            return true;
+        default:
+            m_opInfo = arrayMode.asWord();
+            return true;
+        }
     }
 
     bool mayBeResizableOrGrowableSharedArrayBuffer()
@@ -2674,6 +2766,7 @@ public:
         case PutByValDirect:
         case PutByValWithThis:
         case EnumeratorPutByVal:
+        case MultiPutByVal:
         case PutDynamicVar:
         case ToThis:
             return true;
@@ -2701,6 +2794,7 @@ public:
         case PutByValMegamorphic:
         case PutByValDirect:
         case EnumeratorPutByVal:
+        case MultiPutByVal:
         case PutDynamicVar:
             return ECMAMode::fromByte(m_opInfo2.as<uint8_t>());
         default:

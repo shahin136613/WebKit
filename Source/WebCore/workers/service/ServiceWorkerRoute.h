@@ -32,7 +32,6 @@
 #include "RouterSourceEnum.h"
 #include "RunningStatus.h"
 #include <optional>
-#include <variant>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
@@ -57,7 +56,7 @@ struct ServiceWorkerRoutePattern {
 };
 
 struct ServiceWorkerRouteCondition {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(ServiceWorkerRouteCondition);
 
     ServiceWorkerRouteCondition isolatedCopy() &&;
     ServiceWorkerRouteCondition copy() const;
@@ -72,7 +71,7 @@ struct ServiceWorkerRouteCondition {
     std::unique_ptr<ServiceWorkerRouteCondition> notCondition;
 };
 
-using RouterSource = std::variant<RouterSourceDict, RouterSourceEnum>;
+using RouterSource = Variant<RouterSourceDict, RouterSourceEnum>;
 
 struct ServiceWorkerRoute {
     ServiceWorkerRouteCondition condition;

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2018 Igalia S.L.
- * Copyright (C) 2023 Apple Inc.
+ * Copyright (C) 2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -1117,7 +1117,6 @@ JSCClass* jsc_context_register_class(JSCContext* context, const char* name, JSCC
     g_return_val_if_fail(name, nullptr);
     g_return_val_if_fail(!parentClass || JSC_IS_CLASS(parentClass), nullptr);
 
-    auto jscClass = jscClassCreate(context, name, parentClass, vtable, destroyFunction);
-    wrapperMap(context).registerClass(jscClass.get());
-    return jscClass.get();
+    return wrapperMap(context).registerClass(
+        jscClassCreate(context, name, parentClass, vtable, destroyFunction));
 }

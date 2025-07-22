@@ -47,13 +47,13 @@
 #include <wtf/ThreadSafeWeakPtr.h>
 
 OBJC_CLASS AVPlayerViewController;
-OBJC_CLASS LMPlayableViewController;
 OBJC_CLASS UIImage;
 OBJC_CLASS UIViewController;
 OBJC_CLASS UIWindow;
 OBJC_CLASS UIView;
 OBJC_CLASS CALayer;
 OBJC_CLASS NSError;
+OBJC_CLASS WKSPlayableViewControllerHost;
 OBJC_CLASS WebAVPlayerController;
 
 namespace WebCore {
@@ -112,6 +112,8 @@ public:
     WEBCORE_EXPORT void failedToRestoreFullscreen();
     WEBCORE_EXPORT virtual void enterExternalPlayback(CompletionHandler<void(bool, UIViewController *)>&&, CompletionHandler<void(bool)>&&);
     WEBCORE_EXPORT virtual void exitExternalPlayback();
+    virtual bool cleanupExternalPlayback() { return false; }
+
 
     enum class ExitFullScreenReason {
         DoneButtonTapped,
@@ -175,7 +177,7 @@ public:
     WEBCORE_EXPORT std::optional<MediaPlayerIdentifier> playerIdentifier() const;
 
 #if ENABLE(LINEAR_MEDIA_PLAYER)
-    virtual LMPlayableViewController *playableViewController() { return nil; }
+    virtual WKSPlayableViewControllerHost *playableViewController() { return nil; }
 #endif
 
     virtual void swapFullscreenModesWith(VideoPresentationInterfaceIOS&) { }
@@ -232,7 +234,6 @@ protected:
     virtual void updateRouteSharingPolicy() = 0;
     virtual void setupPlayerViewController() = 0;
     virtual void invalidatePlayerViewController() = 0;
-    virtual bool cleanupExternalPlayback() { return false; }
     virtual UIViewController *playerViewController() const = 0;
     WEBCORE_EXPORT void doSetup();
 

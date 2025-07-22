@@ -400,7 +400,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::setGlobal(uint32_t index, Value value)
 
 PartialResult WARN_UNUSED_RETURN BBQJIT::load(LoadOpType loadOp, Value pointer, Value& result, uint32_t uoffset)
 {
-    if (UNLIKELY(sumOverflows<uint32_t>(uoffset, sizeOfLoadOp(loadOp)))) {
+    if (sumOverflows<uint32_t>(uoffset, sizeOfLoadOp(loadOp))) [[unlikely]] {
         // FIXME: Same issue as in AirIRGenerator::load(): https://bugs.webkit.org/show_bug.cgi?id=166435
         emitThrowException(ExceptionType::OutOfBoundsMemoryAccess);
         consume(pointer);
@@ -501,7 +501,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::load(LoadOpType loadOp, Value pointer, 
 PartialResult WARN_UNUSED_RETURN BBQJIT::store(StoreOpType storeOp, Value pointer, Value value, uint32_t uoffset)
 {
     Location valueLocation = locationOf(value);
-    if (UNLIKELY(sumOverflows<uint32_t>(uoffset, sizeOfStoreOp(storeOp)))) {
+    if (sumOverflows<uint32_t>(uoffset, sizeOfStoreOp(storeOp))) [[unlikely]] {
         // FIXME: Same issue as in AirIRGenerator::load(): https://bugs.webkit.org/show_bug.cgi?id=166435
         emitThrowException(ExceptionType::OutOfBoundsMemoryAccess);
         consume(pointer);
@@ -1367,7 +1367,8 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::truncSaturated(Ext1OpType truncationOp,
 PartialResult WARN_UNUSED_RETURN BBQJIT::addRefI31(ExpressionType value, ExpressionType& result)
 {
     if (value.isConst()) {
-        result = Value::fromI64(JSValue::encode(JSValue(JSValue::Int32Tag, value.asI32() & 0x7fffffff)));
+        uint32_t lo32 = (value.asI32() << 1) >> 1;
+        result = Value::fromI64(JSValue::encode(JSValue(JSValue::Int32Tag, lo32)));
         LOG_INSTRUCTION("RefI31", value, RESULT(result));
         return { };
     }
@@ -1379,7 +1380,9 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addRefI31(ExpressionType value, Express
     Location resultLocation = allocateWithHint(result, initialValue);
 
     LOG_INSTRUCTION("RefI31", value, RESULT(result));
-    m_jit.and32(TrustedImm32(0x7fffffff), initialValue.asGPR(), resultLocation.asGPRlo());
+
+    m_jit.lshift32(TrustedImm32(1), resultLocation.asGPRlo());
+    m_jit.rshift32(TrustedImm32(1), resultLocation.asGPRlo());
     m_jit.move(TrustedImm32(JSValue::Int32Tag), resultLocation.asGPRhi());
     return { };
 }
@@ -1411,8 +1414,6 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addI31GetS(ExpressionType value, Expres
 
     m_jit.move(initialValue.asGPRlo(), resultLocation.asGPR());
 
-    m_jit.lshift32(TrustedImm32(1), resultLocation.asGPR());
-    m_jit.rshift32(TrustedImm32(1), resultLocation.asGPR());
     return { };
 }
 
@@ -1420,7 +1421,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addI31GetU(ExpressionType value, Expres
 {
     if (value.isConst()) {
         if (JSValue::decode(value.asI64()).isNumber())
-            result = Value::fromI32(value.asI64());
+            result = Value::fromI32(value.asI64() & 0x7fffffffu);
         else {
             emitThrowException(ExceptionType::NullI31Get);
             result = Value::fromI32(0);
@@ -1441,7 +1442,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addI31GetU(ExpressionType value, Expres
 
     LOG_INSTRUCTION("I31GetU", value, RESULT(result));
 
-    m_jit.move(initialValue.asGPRlo(), resultLocation.asGPR());
+    m_jit.and32(TrustedImm32(0x7fffffff), initialValue.asGPRlo(), resultLocation.asGPR());
 
     return { };
 }
@@ -1542,6 +1543,23 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addArrayNewFixed(uint32_t typeIndex, Ar
     return { };
 }
 
+PartialResult WARN_UNUSED_RETURN BBQJIT::addArrayNewDefault(uint32_t typeIndex, ExpressionType size, ExpressionType& result)
+{
+    Vector<Value, 8> arguments = {
+        instanceValue(),
+        Value::fromI32(typeIndex),
+        size,
+    };
+    result = topValue(TypeKind::Arrayref);
+    emitCCall(&operationWasmArrayNewEmpty, arguments, result);
+
+    Location resultLocation = loadIfNecessary(result);
+    emitThrowOnNullReference(ExceptionType::BadArrayNew, resultLocation);
+
+    LOG_INSTRUCTION("ArrayNewDefault", typeIndex, size, RESULT(result));
+    return { };
+}
+
 PartialResult WARN_UNUSED_RETURN BBQJIT::addArrayGet(ExtGCOpType arrayGetKind, uint32_t typeIndex, ExpressionType arrayref, ExpressionType index, ExpressionType& result)
 {
     StorageType elementType = getArrayElementType(typeIndex);
@@ -1550,7 +1568,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addArrayGet(ExtGCOpType arrayGetKind, u
     if (arrayref.isConst()) {
         ASSERT(arrayref.asI64() == JSValue::encode(jsNull()));
         emitThrowException(ExceptionType::NullArrayGet);
-        result = Value::fromRef(resultType.kind, 0);
+        result = topValue(resultType.kind);
         return { };
     }
 
@@ -2034,7 +2052,7 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addStructGet(ExtGCOpType structGetKind,
         // This is the only constant struct currently possible.
         ASSERT(JSValue::decode(structValue.asRef()).isNull());
         emitThrowException(ExceptionType::NullStructGet);
-        result = Value::fromRef(resultKind, 0);
+        result = topValue(resultKind);
         LOG_INSTRUCTION("StructGet", structValue, fieldIndex, "Exception");
         return { };
     }
@@ -3498,13 +3516,10 @@ void BBQJIT::emitMoveConst(Value constant, Location loc)
         m_jit.move(Imm32(constant.asI64lo()), loc.asGPRlo());
         break;
     case TypeKind::F32:
-        m_jit.move(Imm32(constant.asI32()), wasmScratchGPR);
-        m_jit.move32ToFloat(wasmScratchGPR, loc.asFPR());
+        m_jit.move32ToFloat(Imm32(constant.asI32()), loc.asFPR());
         break;
     case TypeKind::F64:
-        m_jit.move(Imm32(constant.asI64hi()), wasmScratchGPR2);
-        m_jit.move(Imm32(constant.asI64lo()), wasmScratchGPR);
-        m_jit.move64ToDouble(wasmScratchGPR2, wasmScratchGPR, loc.asFPR());
+        m_jit.move64ToDouble(Imm64(constant.asI64()), loc.asFPR());
         break;
     default:
         RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("Unimplemented constant typekind.");

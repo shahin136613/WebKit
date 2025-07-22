@@ -24,6 +24,7 @@
 #include "config.h"
 #include "RenderListItem.h"
 
+#include "ContainerNodeInlines.h"
 #include "CSSFontSelector.h"
 #include "ElementInlines.h"
 #include "ElementTraversal.h"
@@ -34,6 +35,7 @@
 #include "RenderBoxInlines.h"
 #include "RenderBoxModelObjectInlines.h"
 #include "RenderElementInlines.h"
+#include "RenderObjectInlines.h"
 #include "RenderStyleSetters.h"
 #include "RenderTreeBuilder.h"
 #include "RenderView.h"
@@ -256,7 +258,7 @@ void RenderListItem::updateValue()
 {
     m_value = std::nullopt;
     if (m_marker)
-        m_marker->setNeedsLayoutAndPrefWidthsRecalc();
+        m_marker->setNeedsLayoutAndPreferredWidthsUpdate();
 }
 
 void RenderListItem::styleDidChange(StyleDifference diff, const RenderStyle* oldStyle)
@@ -270,7 +272,7 @@ void RenderListItem::styleDidChange(StyleDifference diff, const RenderStyle* old
 void RenderListItem::computePreferredLogicalWidths()
 {
     // FIXME: RenderListMarker::updateInlineMargins() mutates margin style which affects preferred widths.
-    if (m_marker && m_marker->preferredLogicalWidthsDirty())
+    if (m_marker && m_marker->needsPreferredLogicalWidthsUpdate())
         m_marker->updateInlineMarginsAndContent();
 
     RenderBlockFlow::computePreferredLogicalWidths();
@@ -301,7 +303,7 @@ String RenderListItem::markerTextWithSuffix() const
 void RenderListItem::counterDirectivesChanged()
 {
     if (m_marker)
-        m_marker->setNeedsLayoutAndPrefWidthsRecalc();
+        m_marker->setNeedsLayoutAndPreferredWidthsUpdate();
 
     updateValue();
     auto* list = enclosingList(*this);

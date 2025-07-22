@@ -60,7 +60,7 @@ class LegacyCustomProtocolManager;
 class NetworkSessionCocoa;
 
 struct SessionWrapper : public CanMakeWeakPtr<SessionWrapper>, public CanMakeCheckedPtr<SessionWrapper> {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(SessionWrapper);
     WTF_STRUCT_OVERRIDE_DELETE_FOR_CHECKED_PTR(SessionWrapper);
 
     void initialize(NSURLSessionConfiguration*, NetworkSessionCocoa&, WebCore::StoredCredentialsPolicy, NavigatingToAppBoundDomain);
@@ -152,6 +152,8 @@ public:
     bool preventsSystemHTTPProxyAuthentication() const { return m_preventsSystemHTTPProxyAuthentication; }
     
     _NSHSTSStorage *hstsStorage() const;
+    RetainPtr<_NSHSTSStorage> protectedHSTSStorage() const;
+
     NSURLCredentialStorage *nsCredentialStorage() const;
 
     void removeNetworkWebsiteData(std::optional<WallTime>, std::optional<HashSet<WebCore::RegistrableDomain>>&&, CompletionHandler<void()>&&) override;
@@ -163,7 +165,7 @@ public:
     const Vector<RetainPtr<nw_proxy_config_t>>& proxyConfigs() const { return m_nwProxyConfigs; }
 
     void clearProxyConfigData() final;
-    void setProxyConfigData(const Vector<std::pair<Vector<uint8_t>, WTF::UUID>>&) final;
+    void setProxyConfigData(const Vector<std::pair<Vector<uint8_t>, std::optional<WTF::UUID>>>&) final;
 
     void applyProxyConfigurationToSessionConfiguration(NSURLSessionConfiguration *);
 #endif
@@ -200,7 +202,7 @@ private:
     void removeWebPageNetworkParameters(WebPageProxyIdentifier) final;
     size_t countNonDefaultSessionSets() const final;
 
-    void forEachSessionWrapper(Function<void(SessionWrapper&)>&&);
+    void forEachSessionWrapper(NOESCAPE const Function<void(SessionWrapper&)>&);
 
     bool isNetworkSessionCocoa() const final { return true; }
 

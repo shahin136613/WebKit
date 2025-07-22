@@ -27,6 +27,7 @@
  */
 
 #include "config.h"
+#include "MIMETypeRegistry.h"
 #include "ResourceLoader.h"
 
 #include "HTTPParsers.h"
@@ -36,6 +37,8 @@
 #include <wtf/glib/GRefPtr.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
+#include <wtf/text/StringView.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
@@ -63,14 +66,17 @@ void ResourceLoader::loadGResource()
         gsize dataSize;
         const auto* data = static_cast<const guchar*>(g_bytes_get_data(bytes.get(), &dataSize));
         GUniquePtr<char> fileName(g_path_get_basename(url.path().utf8().data()));
-        GUniquePtr<char> contentType(g_content_type_guess(fileName.get(), data, dataSize, nullptr));
-        auto contentTypeString = String::fromLatin1(contentType.get());
-        ResourceResponse response { url, extractMIMETypeFromMediaType(contentTypeString), static_cast<long long>(dataSize), extractCharsetFromMediaType(contentTypeString).toString() };
+        auto contentTypeString = MIMETypeRegistry::mimeTypeForPath(StringView::fromLatin1(fileName.get()));
+        if (contentTypeString.isEmpty()) {
+            GUniquePtr<char> contentType(g_content_type_guess(fileName.get(), data, dataSize, nullptr));
+            contentTypeString = String::fromLatin1(contentType.get());
+        }
+        ResourceResponse response { WTFMove(url), extractMIMETypeFromMediaType(contentTypeString), static_cast<long long>(dataSize), extractCharsetFromMediaType(contentTypeString).toString() };
         response.setHTTPStatusCode(200);
         response.setHTTPStatusText("OK"_s);
         response.setHTTPHeaderField(HTTPHeaderName::ContentType, contentTypeString);
         response.setSource(ResourceResponse::Source::Network);
-        loader->deliverResponseAndData(response, SharedBuffer::create(bytes.get()));
+        loader->deliverResponseAndData(WTFMove(response), SharedBuffer::create(bytes.get()));
     }, protectedThis.leakRef()));
 
     g_task_set_priority(task.get(), RunLoopSourcePriority::AsyncIONetwork);

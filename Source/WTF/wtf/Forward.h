@@ -21,6 +21,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include <wtf/Platform.h>
 
 #if defined(__has_feature)
@@ -38,6 +39,7 @@ class AtomString;
 class AtomStringImpl;
 class BinarySemaphore;
 class CString;
+class ConcurrentWorkQueue;
 class CrashOnOverflow;
 class DefaultWeakPtrImpl;
 class FunctionDispatcher;
@@ -64,9 +66,11 @@ class URL;
 class UUID;
 class UniquedStringImpl;
 class WallTime;
+class WorkQueue;
 
 struct AnyThreadsAccessTraits;
 struct FastMalloc;
+struct MachSendRightAnnotated;
 struct MainThreadAccessTraits;
 template<typename> struct ObjectIdentifierMainThreadAccessTraits;
 template<typename> struct ObjectIdentifierThreadSafeAccessTraits;
@@ -80,6 +84,7 @@ using SequesteredArenaMalloc = FastMalloc;
 namespace JSONImpl {
 class Array;
 class Object;
+class Value;
 template<typename> class ArrayOf;
 }
 
@@ -108,7 +113,8 @@ template<typename> class Function;
 template<typename> struct FlatteningVariantTraits;
 template<typename> struct IsSmartPtr;
 template<typename, typename = AnyThreadsAccessTraits> class LazyNeverDestroyed;
-template<typename T, typename Traits = typename T::MarkableTraits> class Markable;
+template<typename> struct MarkableTraits;
+template<typename T, typename Traits = MarkableTraits<T>> class Markable;
 template<typename, typename = AnyThreadsAccessTraits> class NeverDestroyed;
 template<typename> class OSObjectPtr;
 template<typename, typename, typename> class ObjectIdentifierGeneric;
@@ -165,7 +171,7 @@ template<typename T> struct KeyValuePairKeyExtractor;
 template<typename KeyTraits, typename MappedTraits> struct KeyValuePairTraits;
 template<typename KeyTypeArg, typename ValueTypeArg> struct KeyValuePair;
 enum class ShouldValidateKey : bool { No, Yes };
-template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits, ShouldValidateKey shouldValidateKey = ShouldValidateKey::Yes, typename Malloc = HashTableMalloc> class HashTable;
+template<typename Key, typename Value, typename Extractor, typename HashFunctions, typename Traits, typename KeyTraits, typename Malloc = HashTableMalloc> class HashTable;
 template<typename Value, typename = DefaultHash<Value>, typename = HashTraits<Value>> class HashCountedSet;
 template<typename KeyArg, typename MappedArg, typename = DefaultHash<KeyArg>, typename = HashTraits<KeyArg>, typename = HashTraits<MappedArg>, typename = HashTableTraits, ShouldValidateKey = ShouldValidateKey::Yes, typename = HashTableMalloc> class HashMap;
 template<typename KeyArg, typename MappedArg, typename KeyHash = DefaultHash<KeyArg>, typename KeyTraits = HashTraits<KeyArg>, typename MappedTraits = HashTraits<MappedArg>, typename HashTraits = HashTableTraits, typename Malloc = HashTableMalloc>
@@ -204,6 +210,7 @@ using WTF::Awaitable;
 using WTF::BinarySemaphore;
 using WTF::CString;
 using WTF::CompletionHandler;
+using WTF::ConcurrentWorkQueue;
 using WTF::Deque;
 using WTF::EnumeratedArray;
 using WTF::FixedVector;
@@ -219,7 +226,9 @@ using WTF::ListHashSet;
 using WTF::Lock;
 using WTF::Logger;
 using WTF::MachSendRight;
+using WTF::MachSendRightAnnotated;
 using WTF::MainThreadDispatcher;
+using WTF::MarkableTraits;
 using WTF::makeUniqueRef;
 using WTF::MonotonicTime;
 using WTF::NativePromise;
@@ -258,6 +267,7 @@ using WTF::Vector;
 using WTF::WallTime;
 using WTF::WeakPtr;
 using WTF::WeakRef;
+using WTF::WorkQueue;
 
 template<class T, class E> using Expected = std::experimental::expected<T, E>;
 template<class E> using Unexpected = std::experimental::unexpected<E>;

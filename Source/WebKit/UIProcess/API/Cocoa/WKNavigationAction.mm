@@ -120,7 +120,9 @@ static WKSyntheticClickType toWKSyntheticClickType(WebKit::WebMouseEventSyntheti
 
 - (NSURLRequest *)request
 {
-    return _navigationAction->request().nsURLRequest(WebCore::HTTPBodyUpdatePolicy::UpdateHTTPBody);
+    if (RetainPtr request = _navigationAction->request().nsURLRequest(WebCore::HTTPBodyUpdatePolicy::UpdateHTTPBody))
+        return request.autorelease();
+    return [NSURLRequest requestWithURL:bridge_cast(URL::createCFURL(_navigationAction->data().invalidURLString).get())];
 }
 
 - (BOOL)shouldPerformDownload
@@ -179,7 +181,7 @@ static WKSyntheticClickType toWKSyntheticClickType(WebKit::WebMouseEventSyntheti
 
 - (NSURL *)_originalURL
 {
-    return Ref { *_navigationAction }->originalURL();
+    return Ref { *_navigationAction }->originalURL().createNSURL().autorelease();
 }
 
 - (BOOL)_isUserInitiated
@@ -215,6 +217,11 @@ static WKSyntheticClickType toWKSyntheticClickType(WebKit::WebMouseEventSyntheti
 - (_WKUserInitiatedAction *)_userInitiatedAction
 {
     return wrapper(_navigationAction->protectedUserInitiatedAction().get());
+}
+
+- (BOOL)isContentRuleListRedirect
+{
+    return _navigationAction->isContentRuleListRedirect();
 }
 
 - (BOOL)_isRedirect
@@ -270,7 +277,7 @@ static WKSyntheticClickType toWKSyntheticClickType(WebKit::WebMouseEventSyntheti
     auto& name = _navigationAction->targetFrameName();
     if (name.isNull())
         return nil;
-    return name;
+    return name.createNSString().autorelease();
 }
 
 - (BOOL)_hasOpener

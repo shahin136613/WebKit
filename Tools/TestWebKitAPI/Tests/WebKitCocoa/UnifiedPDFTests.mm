@@ -27,6 +27,7 @@
 
 #if ENABLE(UNIFIED_PDF)
 
+#import "AppKitSPI.h"
 #import "CGImagePixelReader.h"
 #import "ContentSecurityPolicyTestHelpers.h"
 #import "HTTPServer.h"
@@ -47,6 +48,7 @@
 #import "WKWebViewForTestingImmediateActions.h"
 #import <WebCore/Color.h>
 #import <WebCore/ColorSerialization.h>
+#import <WebCore/WebEvent.h>
 #import <WebKit/WKNavigationDelegatePrivate.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
@@ -55,6 +57,10 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/TypeCastsCocoa.h>
 #import <wtf/text/MakeString.h>
+
+@interface WKWebView ()
+- (void)copy:(id)sender;
+@end
 
 #if PLATFORM(IOS_FAMILY)
 @interface UIPrintInteractionController ()
@@ -110,7 +116,7 @@ public:
 
     void synchronouslyLoadPDFDocument(String documentName)
     {
-        RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:documentName withExtension:@"pdf"]];
+        RetainPtr request = adoptNS([[NSURLRequest alloc] initWithURL:[NSBundle.test_resourcesBundle URLForResource:documentName.createNSString().get() withExtension:@"pdf"]]);
         [webView synchronouslyLoadRequest:request.get()];
         [[webView window] makeFirstResponder:webView.get()];
         [[webView window] makeKeyAndOrderFront:nil];
@@ -220,6 +226,41 @@ UNIFIED_PDF_TEST(DictionaryLookupDoesNotAssertOnEmptyRange)
     [webView simulateImmediateAction:NSMakePoint(200, 200)];
 }
 
+UNIFIED_PDF_TEST(TabKeyOnPDFTextFieldShouldNotCrash)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 600) configuration:configurationForWebViewTestingUnifiedPDF().get() addToWindow:YES]);
+    RetainPtr delegate = adoptNS([[ObserveWebContentCrashNavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"test_form" withExtension:@"pdf"]];
+    [webView loadRequest:request.get()];
+
+    Util::waitFor([delegate] {
+        return [delegate webProcessCrashed] || [delegate navigationFinished];
+    });
+    EXPECT_FALSE([delegate webProcessCrashed]);
+
+    auto pressTabKey = [&](auto completionHandler) {
+        [webView sendKey:@"\t" code:0x30 isDown:YES modifiers:0];
+        [webView sendKey:@"\t" code:0x30 isDown:NO modifiers:0];
+        completionHandler();
+    };
+
+    auto testTabKeysAtPoint = [&](NSPoint point) {
+        [webView sendClickAtPoint:point];
+        [webView waitForNextPresentationUpdate];
+
+        bool doneWaiting = false;
+        pressTabKey([&doneWaiting] {
+            doneWaiting = true;
+        });
+        Util::run(&doneWaiting);
+        EXPECT_FALSE([delegate webProcessCrashed]);
+    };
+
+    testTabKeysAtPoint(NSMakePoint(220, 300));
+}
+
 #endif // PLATFORM(MAC)
 
 UNIFIED_PDF_TEST(SnapshotsPaintPageContent)
@@ -315,6 +356,37 @@ UNIFIED_PDF_TEST(WebProcessShouldNotCrashWithUISideCompositingDisabled)
         return [delegate webProcessCrashed] || [delegate navigationFinished];
     });
     EXPECT_FALSE([delegate webProcessCrashed]);
+}
+
+UNIFIED_PDF_TEST(SelectAllText)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"test" withExtension:@"pdf"]]];
+
+    auto selectAllText = [](TestWKWebView *webView) {
+#if PLATFORM(IOS_FAMILY)
+        [webView selectTextInGranularity:UITextGranularityDocument atPoint:CGPointMake(100, 100)];
+#else
+        [[webView window] makeFirstResponder:webView];
+        [[webView window] makeKeyAndOrderFront:nil];
+        [[webView window] orderFrontRegardless];
+        [webView sendClickAtPoint:NSMakePoint(100, 100)];
+        [webView selectAll:nil];
+#endif
+    };
+
+    selectAllText(webView.get());
+    [webView waitForNextPresentationUpdate];
+
+#if PLATFORM(IOS_FAMILY)
+    RetainPtr contentView = [webView textInputContentView];
+    RetainPtr selectedText = [contentView selectedText];
+#else
+    [webView copy:nil];
+    [webView waitForNextPresentationUpdate];
+    RetainPtr selectedText = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+#endif
+    EXPECT_WK_STREQ(@"Test PDF Content\n555-555-1234", selectedText.get());
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -430,8 +502,8 @@ UNIFIED_PDF_TEST(PrintPDFUsingPrintInteractionController)
     TestWebKitAPI::Util::run(&done);
     EXPECT_NE([pdfData length], 0UL);
 
-    Ref pdf = TestWebKitAPI::TestPDFDocument::createFromData(pdfData.get());
-    EXPECT_EQ(pdf->pageCount(), 16UL);
+    RetainPtr pdf = adoptNS([[TestPDFDocument alloc] initFromData:pdfData.get()]);
+    EXPECT_EQ([pdf pageCount], 16);
 }
 
 // FIXME: <webkit.org/b/288401> [ iOS Debug ] TestWebKitAPI.UnifiedPDF.ShouldNotRespectSetViewScale(api-test) is a constant timeout
@@ -491,6 +563,103 @@ UNIFIED_PDF_TEST(KeepScrollPositionAtOriginAfterAnimatedResize)
 
     checkOffsetsAreApproximatelyEqual(offsetsAfterResizing[0], offsetsAfterResizing[2]);
     checkOffsetsAreApproximatelyEqual(offsetsAfterResizing[1], offsetsAfterResizing[3]);
+}
+
+UNIFIED_PDF_TEST(KeepRelativeScrollPositionAfterAnimatedResize)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 800) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+    [webView waitForNextPresentationUpdate];
+
+    [[webView scrollView] setContentOffset:CGPointMake(0, 4000)];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    [webView _beginAnimatedResizeWithUpdates:^{
+        [webView setFrame:CGRectMake(0, 0, 400, 800)];
+    }];
+    [webView _endAnimatedResize];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, CGPointMake(0, 2533));
+}
+
+UNIFIED_PDF_TEST(KeepRelativeScrollPositionAfterZoomingAndViewportUpdate)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 800) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+
+    RetainPtr scrollView = [webView scrollView];
+
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    [webView setZoomScaleSimulatingUserTriggeredZoom:3];
+
+    [scrollView setContentOffset:CGPointMake([scrollView contentSize].width - [scrollView frame].size.width, 12000)];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    CGSize originalSize = [webView frame].size;
+    CGSize layoutSize = CGSizeMake(originalSize.width - 200, originalSize.height);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
+
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, CGPointMake(600, 8002));
+}
+
+UNIFIED_PDF_TEST(ScrollOffsetResetWhenChangingPDF)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 800) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+    [webView waitForNextPresentationUpdate];
+
+    [[webView scrollView] setContentOffset:CGPointMake(0, 4000)];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages-colored" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, CGPointZero);
+}
+
+UNIFIED_PDF_TEST(ScrollOffsetUnchangedWithZeroSizeViewportUpdate)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 800) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+    [webView waitForNextPresentationUpdate];
+
+    auto expectedScrollOffset = CGPointMake(0, 400);
+    [[webView scrollView] setContentOffset:expectedScrollOffset];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, expectedScrollOffset);
+
+    auto previousLayoutSize = [webView scrollView].bounds.size;
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeZero minimumUnobscuredSizeOverride:CGSizeZero maximumUnobscuredSizeOverride:CGSizeZero];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, expectedScrollOffset);
+
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:previousLayoutSize minimumUnobscuredSizeOverride:previousLayoutSize maximumUnobscuredSizeOverride:previousLayoutSize];
+    [webView waitForNextVisibleContentRectUpdate];
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_EQ([webView scrollView].contentOffset, expectedScrollOffset);
 }
 
 #endif // PLATFORM(IOS_FAMILY)
@@ -561,7 +730,7 @@ UNIFIED_PDF_TEST(DISABLED_RespectsPageFragment)
     auto path = makeString('/', fileName, ".pdf"_s);
     auto pathWithFragment = makeString(path, "#page=2"_s);
 
-    RetainPtr pdfURL = [NSBundle.test_resourcesBundle URLForResource:String { fileName } withExtension:@"pdf"];
+    RetainPtr pdfURL = [NSBundle.test_resourcesBundle URLForResource:fileName.createNSString().get() withExtension:@"pdf"];
     HTTPResponse response { [NSData dataWithContentsOfURL:pdfURL.get()] };
     HTTPServer server { { { path, response }, { pathWithFragment, response } } };
 
@@ -575,6 +744,74 @@ UNIFIED_PDF_TEST(DISABLED_RespectsPageFragment)
 
     EXPECT_NE(colorsWithoutFragment, colorsWithFragment);
 }
+
+#if HAVE(UISCROLLVIEW_ALLOWS_KEYBOARD_SCROLLING)
+
+static void checkKeyboardScrollability(TestWKWebView *webView)
+{
+    auto pressSpacebar = ^(void(^completionHandler)(void)) {
+        RetainPtr firstWebEvent = adoptNS([[WebEvent alloc] initWithKeyEventType:WebEventKeyDown timeStamp:CFAbsoluteTimeGetCurrent() characters:@" " charactersIgnoringModifiers:@" " modifiers:0 isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:0 isTabKey:NO]);
+
+        RetainPtr secondWebEvent = adoptNS([[WebEvent alloc] initWithKeyEventType:WebEventKeyUp timeStamp:CFAbsoluteTimeGetCurrent() characters:@" " charactersIgnoringModifiers:@" " modifiers:0 isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:0 isTabKey:NO]);
+
+        [webView handleKeyEvent:firstWebEvent.get() completion:^(WebEvent *theEvent, BOOL wasHandled) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [webView handleKeyEvent:secondWebEvent.get() completion:^(WebEvent *theEvent, BOOL wasHandled) {
+                    completionHandler();
+                }];
+            });
+        }];
+    };
+
+    NSInteger scrollY = [[webView stringByEvaluatingJavaScript:@"window.scrollY"] integerValue];
+    EXPECT_EQ(scrollY, 0);
+
+    __block bool doneWaiting = false;
+
+    pressSpacebar(^{
+        NSInteger scrollY = [[webView stringByEvaluatingJavaScript:@"window.scrollY"] integerValue];
+        EXPECT_GT(scrollY, 0);
+        doneWaiting = true;
+    });
+
+    TestWebKitAPI::Util::run(&doneWaiting);
+}
+
+UNIFIED_PDF_TEST(MainFramePDFIsKeyboardScrollable)
+{
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 600, 800) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+    [webView waitForNextPresentationUpdate];
+
+    checkKeyboardScrollability(webView.get());
+}
+
+#if ENABLE(IOS_TOUCH_EVENTS)
+
+UNIFIED_PDF_TEST(MainFramePDFIsKeyboardScrollableAfterTap)
+{
+    TestWebKitAPI::Util::instantiateUIApplicationIfNeeded();
+
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configurationForWebViewTestingUnifiedPDF().get()]);
+    RetainPtr preferences = adoptNS([[WKWebpagePreferences alloc] init]);
+    [preferences _setMouseEventPolicy:_WKWebsiteMouseEventPolicySynthesizeTouchEvents];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"multiple-pages" withExtension:@"pdf"]];
+    [webView synchronouslyLoadRequest:request.get()];
+
+    TestWebKitAPI::MouseEventTestHarness testHarness { webView.get() };
+    testHarness.mouseMove(30, 30);
+    testHarness.mouseDown();
+    testHarness.mouseUp();
+    [webView waitForPendingMouseEvents];
+    [webView waitForNextPresentationUpdate];
+
+    checkKeyboardScrollability(webView.get());
+}
+
+#endif
+
+#endif
 
 } // namespace TestWebKitAPI
 

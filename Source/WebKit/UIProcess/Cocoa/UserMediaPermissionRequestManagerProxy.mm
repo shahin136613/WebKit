@@ -28,7 +28,6 @@
 
 #import "MediaPermissionUtilities.h"
 #import "SandboxUtilities.h"
-#import "UserMediaCaptureManagerProxy.h"
 #import "WKWebView.h"
 #import "WebPageProxy.h"
 #import "WebPreferences.h"
@@ -97,7 +96,7 @@ static WebCore::VideoFrameRotation computeVideoFrameRotation(int rotation)
     String persistentId = [coordinator device].uniqueID;
     auto rotation = computeVideoFrameRotation(clampToInteger([coordinator videoRotationAngleForHorizonLevelPreview]));
 
-    RunLoop::protectedMain()->dispatch([protectedSelf = retainPtr(self), self, persistentId = WTFMove(persistentId).isolatedCopy(), rotation] {
+    RunLoop::mainSingleton().dispatch([protectedSelf = retainPtr(self), self, persistentId = WTFMove(persistentId).isolatedCopy(), rotation] {
         if (_managerProxy)
             _managerProxy->rotationAngleForCaptureDeviceChanged(persistentId, rotation);
     });
@@ -113,7 +112,7 @@ static WebCore::VideoFrameRotation computeVideoFrameRotation(int rotation)
         if (!PAL::getAVCaptureDeviceRotationCoordinatorClass())
             return { };
 
-        RetainPtr avDevice = [PAL::getAVCaptureDeviceClass() deviceWithUniqueID:persistentId];
+        RetainPtr avDevice = [PAL::getAVCaptureDeviceClass() deviceWithUniqueID:persistentId.createNSString().get()];
         if (!avDevice)
             return { };
 

@@ -74,7 +74,7 @@ struct SameSizeAsLegacyInlineTextBox : public LegacyInlineBox {
 
 static_assert(sizeof(LegacyInlineTextBox) == sizeof(SameSizeAsLegacyInlineTextBox), "LegacyInlineTextBox should stay small");
 
-typedef UncheckedKeyHashMap<const LegacyInlineTextBox*, LayoutRect> LegacyInlineTextBoxOverflowMap;
+typedef HashMap<const LegacyInlineTextBox*, LayoutRect> LegacyInlineTextBoxOverflowMap;
 static LegacyInlineTextBoxOverflowMap* gTextBoxesWithOverflow;
 
 LegacyInlineTextBox::LegacyInlineTextBox(RenderSVGInlineText& renderer)
@@ -120,24 +120,6 @@ void LegacyInlineTextBox::setLogicalOverflowRect(const LayoutRect& rect)
     if (!gTextBoxesWithOverflow)
         gTextBoxesWithOverflow = new LegacyInlineTextBoxOverflowMap;
     gTextBoxesWithOverflow->add(this, rect);
-}
-
-LayoutUnit LegacyInlineTextBox::baselinePosition(FontBaseline baselineType) const
-{
-    if (!parent())
-        return 0;
-    if (&parent()->renderer() == renderer().parent())
-        return parent()->baselinePosition(baselineType);
-    return downcast<RenderBoxModelObject>(*renderer().parent()).baselinePosition(baselineType, isFirstLine(), isHorizontal() ? HorizontalLine : VerticalLine, PositionOnContainingLine);
-}
-
-LayoutUnit LegacyInlineTextBox::lineHeight() const
-{
-    if (!renderer().parent())
-        return 0;
-    if (&parent()->renderer() == renderer().parent())
-        return parent()->lineHeight();
-    return downcast<RenderBoxModelObject>(*renderer().parent()).lineHeight(isFirstLine(), isHorizontal() ? HorizontalLine : VerticalLine, PositionOnContainingLine);
 }
 
 LayoutUnit LegacyInlineTextBox::selectionTop() const

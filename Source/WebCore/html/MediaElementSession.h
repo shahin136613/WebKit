@@ -58,12 +58,14 @@ enum class MediaPlaybackDenialReason {
     InvalidState,
 };
 
+class AudioTrack;
 class Document;
 class HTMLMediaElement;
 class MediaMetadata;
 class MediaSession;
 class MediaElementSessionObserver;
 class SourceBuffer;
+class VideoTrack;
 
 struct MediaPositionState;
 
@@ -72,6 +74,11 @@ enum class MediaSessionPlaybackState : uint8_t;
 class MediaElementSession final : public PlatformMediaSession {
     WTF_MAKE_TZONE_ALLOCATED(MediaElementSession);
 public:
+    static Ref<MediaElementSession> create(HTMLMediaElement& element)
+    {
+        return adoptRef(*new MediaElementSession(element));
+    }
+
     explicit MediaElementSession(HTMLMediaElement&);
     virtual ~MediaElementSession();
 
@@ -143,7 +150,9 @@ public:
         RequireUserGestureForVideoDueToLowPowerMode = 1 << 15,
         RequirePageVisibilityToPlayAudio = 1 << 16,
         RequireUserGestureForVideoDueToAggressiveThermalMitigation = 1 << 17,
+#if ENABLE(REQUIRES_PAGE_VISIBILITY_FOR_NOW_PLAYING)
         RequirePageVisibilityForVideoToBeNowPlaying = 1 << 18,
+#endif
         AllRestrictions = ~NoRestrictions,
     };
     typedef unsigned BehaviorRestrictions;
@@ -153,7 +162,8 @@ public:
     WEBCORE_EXPORT void removeBehaviorRestriction(BehaviorRestrictions);
     bool hasBehaviorRestriction(BehaviorRestrictions restriction) const { return restriction & m_restrictions; }
 
-    HTMLMediaElement& element() const { return m_element; }
+    WeakPtr<HTMLMediaElement> element() const { return m_element; }
+    RefPtr<HTMLMediaElement> protectedElement() const;
 
     bool wantsToObserveViewportVisibilityForMediaControls() const;
     bool wantsToObserveViewportVisibilityForAutoplay() const;
@@ -179,6 +189,8 @@ public:
     std::optional<MediaUsageInfo> mediaUsageInfo() const { return m_mediaUsageInfo; }
 
 #if !RELEASE_LOG_DISABLED
+    static String descriptionForTrack(const VideoTrack&);
+    static String descriptionForTrack(const AudioTrack&);
     String description() const final;
     ASCIILiteral logClassName() const final { return "MediaElementSession"_s; }
 #endif
@@ -221,7 +233,7 @@ private:
 
     void addMediaUsageManagerSessionIfNecessary();
 
-    HTMLMediaElement& m_element;
+    WeakPtr<HTMLMediaElement> m_element;
     BehaviorRestrictions m_restrictions;
 
     std::optional<MediaUsageInfo> m_mediaUsageInfo;
@@ -276,7 +288,7 @@ struct LogArgument<WebCore::MediaPlaybackDenialReason> {
 
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaElementSession)
-static bool isType(const WebCore::PlatformMediaSession& session) { return WebCore::MediaElementSession::isMediaElementSessionMediaType(session.mediaType()); }
+static bool isType(const WebCore::PlatformMediaSessionInterface& session) { return WebCore::MediaElementSession::isMediaElementSessionMediaType(session.mediaType()); }
 SPECIALIZE_TYPE_TRAITS_END()
 
 #endif // ENABLE(VIDEO)

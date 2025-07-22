@@ -27,6 +27,7 @@
 #include <wtf/ParkingLot.h>
 
 #include <mutex>
+#include <ranges>
 #include <wtf/DataLog.h>
 #include <wtf/FixedVector.h>
 #include <wtf/HashFunctions.h>
@@ -53,7 +54,7 @@ static void dataLogForCurrentThread(const Types&... values)
 }
 
 struct ThreadData : public ThreadSafeRefCounted<ThreadData> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(ThreadData);
 public:
     
     ThreadData();
@@ -78,7 +79,7 @@ enum class DequeueResult {
 };
 
 struct Bucket {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(Bucket);
 public:
     Bucket()
         : random(static_cast<unsigned>(std::bit_cast<intptr_t>(this))) // Cannot use default seed since that recurses into Lock.
@@ -163,7 +164,7 @@ public:
                 break;
             case DequeueResult::RemoveAndStop:
                 shouldContinue = false;
-                FALLTHROUGH;
+                [[fallthrough]];
             case DequeueResult::RemoveAndContinue:
                 if (verbose)
                     dataLogForCurrentThread(": dequeueing ", RawPointer(current.get()), " from ", RawPointer(this), "\n");
@@ -216,7 +217,7 @@ Vector<Hashtable*>* hashtables;
 WordLock hashtablesLock;
 
 struct Hashtable {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(Hashtable);
 
     Hashtable(unsigned size)
         : data(size)
@@ -312,7 +313,7 @@ Vector<Bucket*> lockHashtable()
         }
 
         // Now lock the buckets in the right order.
-        std::sort(buckets.begin(), buckets.end());
+        std::ranges::sort(buckets);
         for (Bucket* bucket : buckets)
             bucket->lock.lock();
 

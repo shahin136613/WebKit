@@ -3,7 +3,7 @@
     Copyright (C) 2001 Dirk Mueller (mueller@kde.org)
     Copyright (C) 2002 Waldo Bastian (bastian@kde.org)
     Copyright (C) 2006 Samuel Weinig (sam.weinig@gmail.com)
-    Copyright (C) 2004, 2005, 2006, 2007 Apple Inc. All rights reserved.
+    Copyright (C) 2004-2025 Apple Inc. All rights reserved.
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -32,6 +32,7 @@
 #include "Font.h"
 #include "FrameLoader.h"
 #include "FrameLoaderTypes.h"
+#include "ImageAdapter.h"
 #include "LocalFrame.h"
 #include "LocalFrameLoaderClient.h"
 #include "LocalFrameView.h"
@@ -96,7 +97,7 @@ CachedImage::CachedImage(const URL& url, Image* image, PAL::SessionID sessionID,
 
     // Use the incoming URL in the response field. This ensures that code using the response directly,
     // such as origin checks for security, actually see something.
-    mutableResponse().setURL(url);
+    mutableResponse().setURL(URL { url });
 
     setAllowsOrientationOverride(isCORSSameOrigin() || m_image->sourceURL().protocolIsData());
 }
@@ -633,11 +634,11 @@ void CachedImage::error(CachedResource::Status status)
     notifyObservers();
 }
 
-void CachedImage::responseReceived(const ResourceResponse& newResponse)
+void CachedImage::responseReceived(ResourceResponse&& newResponse)
 {
     if (!response().isNull())
         clear();
-    CachedResource::responseReceived(newResponse);
+    CachedResource::responseReceived(WTFMove(newResponse));
 }
 
 void CachedImage::destroyDecodedData()
@@ -775,7 +776,7 @@ bool CachedImage::isOriginClean(SecurityOrigin* origin)
 
 CachedResource::RevalidationDecision CachedImage::makeRevalidationDecision(CachePolicy cachePolicy) const
 {
-    if (UNLIKELY(isManuallyCached())) {
+    if (isManuallyCached()) [[unlikely]] {
         // Do not revalidate manually cached images. This mechanism is used as a
         // way to efficiently share an image from the client to content and
         // the URL for that image may not represent a resource that can be

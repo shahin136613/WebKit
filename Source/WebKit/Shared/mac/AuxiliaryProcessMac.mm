@@ -193,9 +193,9 @@ static OSStatus enableSandboxStyleFileQuarantine()
 }
 
 #if USE(CACHE_COMPILED_SANDBOX)
-static std::optional<Vector<uint8_t>> fileContents(const String& path, bool shouldLock = false, OptionSet<FileSystem::FileLockMode> lockMode = FileSystem::FileLockMode::Exclusive)
+static std::optional<Vector<uint8_t>> fileContents(const String& path)
 {
-    auto fileHandle = FileSystem::openFile(path, FileSystem::FileOpenMode::Read, FileSystem::FileAccessPermission::All, lockMode);
+    auto fileHandle = FileSystem::openFile(path, FileSystem::FileOpenMode::Read);
     if (!fileHandle)
         return std::nullopt;
 
@@ -415,9 +415,7 @@ static SandboxProfilePtr compileAndCacheSandboxProfile(const SandboxInfo& info)
         CachedSandboxVersionNumber,
         static_cast<uint32_t>(libsandboxVersion),
         safeCast<uint32_t>(info.header.length()),
-WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
-        haveBuiltin ? safeCast<uint32_t>(strlen(sandboxProfile->builtin)) : std::numeric_limits<uint32_t>::max(),
-WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+        haveBuiltin ? safeCast<uint32_t>(unsafeSpan(sandboxProfile->builtin).size()) : std::numeric_limits<uint32_t>::max(),
         safeCast<uint32_t>(sandboxProfile->size),
         { 0 },
         { 0 }
@@ -522,8 +520,8 @@ static bool tryApplyCachedSandbox(const SandboxInfo& info)
 
 static inline const NSBundle *webKit2Bundle()
 {
-    const static NSBundle *bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-    return bundle;
+    const static NeverDestroyed<RetainPtr<NSBundle>> bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
+    return bundle.get().get();
 }
 
 static void getSandboxProfileOrProfilePath(const SandboxInitializationParameters& parameters, String& profileOrProfilePath, bool& isProfilePath)
@@ -551,7 +549,7 @@ static bool compileAndApplySandboxSlowCase(const String& profileOrProfilePath, b
     uint64_t flags = isProfilePath ? SANDBOX_NAMED_EXTERNAL : 0;
 
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (sandbox_init_with_parameters(temp.data(), flags, parameters.namedParameterVector().data(), &errorBuf)) {
+    if (sandbox_init_with_parameters(temp.data(), flags, parameters.namedParameterVector().span().data(), &errorBuf)) {
 ALLOW_DEPRECATED_DECLARATIONS_END
         WTFLogAlways("%s: Could not initialize sandbox profile [%s], error '%s'\n", getprogname(), temp.data(), errorBuf);
         for (size_t i = 0, count = parameters.count(); i != count; ++i)
@@ -786,8 +784,8 @@ void AuxiliaryProcess::stopNSAppRunLoop()
     ASSERT([NSApp isRunning]);
     [NSApp stop:nil];
 
-    NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSMakePoint(0, 0) modifierFlags:0 timestamp:0.0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
-    [NSApp postEvent:event atStart:true];
+    RetainPtr event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSMakePoint(0, 0) modifierFlags:0 timestamp:0.0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
+    [NSApp postEvent:event.get() atStart:true];
 }
 #endif
 

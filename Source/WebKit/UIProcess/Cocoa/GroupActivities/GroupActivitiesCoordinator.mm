@@ -220,7 +220,7 @@ void GroupActivitiesCoordinator::playbackStateChanged(MediaSessionPlaybackState 
 void GroupActivitiesCoordinator::trackIdentifierChanged(const String& identifier)
 {
     if (identifier != String([m_playbackCoordinator currentItemIdentifier]))
-        [m_playbackCoordinator transitionToItemWithIdentifier:identifier proposingInitialTimingBasedOnTimebase:nil];
+        [m_playbackCoordinator transitionToItemWithIdentifier:identifier.createNSString().get() proposingInitialTimingBasedOnTimebase:nil];
 }
 
 void GroupActivitiesCoordinator::issuePlayCommand(AVDelegatingPlaybackCoordinatorPlayCommand *playCommand, CommandCompletionHandler&& callback)
@@ -285,4 +285,4 @@ void GroupActivitiesCoordinator::issuePrepareTransitionCommand(AVDelegatingPlayb
 
 }
 
-#endif
+#endif // ENABLE(MEDIA_SESSION_COORDINATOR) && HAVE(GROUP_ACTIVITIES)

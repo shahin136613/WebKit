@@ -105,6 +105,10 @@
         "CustomDeleteProperty": {
             "contextsAllowed": ["interface"]
         },
+        "CustomEnabledBy": {
+            "contextsAllowed": ["attribute", "operation"],
+            "values": ["*"]
+        },
         "CustomGetCallData": {
             "contextsAllowed": ["interface"]
         },
@@ -188,7 +192,7 @@
             "contextsAllowed": ["attribute", "interface"]
         },
         "EnabledForWorld": {
-            "contextsAllowed": ["attribute", "operation"],
+            "contextsAllowed": ["attribute", "operation", "interface"],
             "values": ["*"],
             "supportsConjunction": true
         },
@@ -420,6 +424,11 @@
         "Reflect": {
             "contextsAllowed": ["attribute"],
             "values": ["*"]
+        },
+        "ReflectSetter": {
+            "contextsAllowed": ["attribute"],
+            "values": ["*"],
+            "notes": "Variant of Reflect that relies on C++ implementation for the getter, but automatically generates the setter"
         },
         "Replaceable": {
             "contextsAllowed": ["attribute"],

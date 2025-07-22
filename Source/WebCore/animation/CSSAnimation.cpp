@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -59,6 +59,11 @@ CSSAnimation::CSSAnimation(const Styleable& element, const Animation& backingAni
 void CSSAnimation::syncPropertiesWithBackingAnimation()
 {
     StyleOriginatedAnimation::syncPropertiesWithBackingAnimation();
+
+    // If we have been disassociated from our original owning element,
+    // we should no longer sync any of the `animation-*` CSS properties.
+    if (!owningElement())
+        return;
 
     if (!effect())
         return;
@@ -158,7 +163,6 @@ void CSSAnimation::syncStyleOriginatedTimeline()
     suspendEffectInvalidation();
 
     ASSERT(owningElement());
-    Ref target = owningElement()->element;
     Ref document = owningElement()->element.document();
     auto& timeline = backingAnimation().timeline();
     WTF::switchOn(timeline,
@@ -172,8 +176,7 @@ void CSSAnimation::syncStyleOriginatedTimeline()
             scrollTimeline->setSource(*owningElement());
             setTimeline(WTFMove(scrollTimeline));
         }, [&] (const Animation::AnonymousViewTimeline& anonymousViewTimeline) {
-            auto insets = anonymousViewTimeline.insets;
-            auto viewTimeline = ViewTimeline::create(nullAtom(), anonymousViewTimeline.axis, WTFMove(insets));
+            auto viewTimeline = ViewTimeline::create(nullAtom(), anonymousViewTimeline.axis, anonymousViewTimeline.insets);
             viewTimeline->setSubject(*owningElement());
             setTimeline(WTFMove(viewTimeline));
         }
@@ -364,7 +367,7 @@ void CSSAnimation::updateKeyframesIfNeeded(const RenderStyle* oldStyle, const Re
     if (m_overriddenProperties.contains(Property::Keyframes))
         return;
 
-    auto* keyframeEffect = dynamicDowncast<KeyframeEffect>(effect());
+    RefPtr keyframeEffect = dynamicDowncast<KeyframeEffect>(effect());
     if (!keyframeEffect)
         return;
 

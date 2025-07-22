@@ -117,7 +117,7 @@ static WKRetainPtr<WKDictionaryRef> createWKDictionary(std::initializer_list<std
         values.append(pair.second.get());
         strings.append(WTFMove(key));
     }
-    return adoptWK(WKDictionaryCreate(keys.data(), values.data(), keys.size()));
+    return adoptWK(WKDictionaryCreate(keys.span().data(), values.span().data(), keys.size()));
 }
 
 template<typename T> static WKRetainPtr<WKTypeRef> postSynchronousMessageWithReturnValue(const char* name, const WKRetainPtr<T>& value)
@@ -345,6 +345,11 @@ void TestRunner::findStringMatchesInPage(JSContextRef context, JSStringRef targe
             { "FindOptions", toWK(*options) },
         }));
     }
+}
+
+void TestRunner::indicateFindMatch(JSContextRef context, uint32_t index)
+{
+    postPageMessage("IndicateFindMatch", index);
 }
 
 void TestRunner::replaceFindMatchesAtIndices(JSContextRef context, JSValueRef matchIndicesAsValue, JSStringRef replacementText, bool selectionOnly)
@@ -876,19 +881,19 @@ bool TestRunner::isDoingMediaCapture() const
     return postSynchronousPageMessageReturningBoolean("IsDoingMediaCapture");
 }
 
-void TestRunner::setUserMediaPersistentPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin)
+void TestRunner::delayUserMediaRequestDecision()
 {
-    InjectedBundle::singleton().setUserMediaPersistentPermissionForOrigin(permission, toWK(origin).get(), toWK(parentOrigin).get());
+    InjectedBundle::singleton().delayUserMediaRequestDecision();
 }
 
-unsigned TestRunner::userMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin) const
+unsigned TestRunner::userMediaPermissionRequestCount() const
 {
-    return InjectedBundle::singleton().userMediaPermissionRequestCountForOrigin(toWK(origin).get(), toWK(parentOrigin).get());
+    return InjectedBundle::singleton().userMediaPermissionRequestCount();
 }
 
-void TestRunner::resetUserMediaPermissionRequestCountForOrigin(JSStringRef origin, JSStringRef parentOrigin)
+void TestRunner::resetUserMediaPermissionRequestCount()
 {
-    InjectedBundle::singleton().resetUserMediaPermissionRequestCountForOrigin(toWK(origin).get(), toWK(parentOrigin).get());
+    InjectedBundle::singleton().resetUserMediaPermissionRequestCount();
 }
 
 bool TestRunner::callShouldCloseOnWebView(JSContextRef context)
@@ -1609,7 +1614,7 @@ static WKRetainPtr<WKDictionaryRef> captureDeviceProperties(JSContextRef context
         JSPropertyNameArrayRelease(propertyNameArray);
     }
 
-    return adoptWK(WKDictionaryCreate(keys.data(), values.data(), keys.size()));
+    return adoptWK(WKDictionaryCreate(keys.span().data(), values.span().data(), keys.size()));
 }
 
 void TestRunner::addMockCameraDevice(JSContextRef context, JSStringRef persistentId, JSStringRef label, JSValueRef properties)

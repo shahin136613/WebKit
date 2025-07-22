@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -22,6 +22,7 @@
 #include "config.h"
 #include "RadioInputType.h"
 
+#include "ContainerNodeInlines.h"
 #include "FrameDestructionObserverInlines.h"
 #include "HTMLFormElement.h"
 #include "HTMLInputElement.h"
@@ -102,12 +103,12 @@ void RadioInputType::willUpdateCheckedness(bool nowChecked, WasSetByJavaScript)
 {
     if (!nowChecked)
         return;
-    RefPtr element = protectedElement();
+    Ref element = *this->element();
     if (element->radioButtonGroups()) {
         // Buttons in RadioButtonGroups are handled in HTMLInputElement::setChecked().
         return;
     }
-    if (auto input = element->checkedRadioButtonForGroup())
+    if (RefPtr input = element->checkedRadioButtonForGroup())
         input->setChecked(false);
 }
 
@@ -184,9 +185,9 @@ void RadioInputType::handleKeyupEvent(KeyboardEvent& event)
     dispatchSimulatedClickIfActive(event);
 }
 
-bool RadioInputType::isKeyboardFocusable(KeyboardEvent* event) const
+bool RadioInputType::isKeyboardFocusable(const FocusEventData& focusEventData) const
 {
-    if (!InputType::isKeyboardFocusable(event))
+    if (!InputType::isKeyboardFocusable(focusEventData))
         return false;
 
     RefPtr element = this->element();

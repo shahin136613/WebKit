@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -244,9 +244,9 @@ private:
 
     MediaStreamTrackPrivate* activeVideoTrack() const;
 
-    LayerHostingContextID hostingContextID() const final;
-    void setVideoLayerSizeFenced(const FloatSize&, WTF::MachSendRight&&) final;
-    void requestHostingContextID(LayerHostingContextIDCallback&&) final;
+    HostingContext hostingContext() const final;
+    void setVideoLayerSizeFenced(const FloatSize&, WTF::MachSendRightAnnotated&&) final;
+    void requestHostingContext(LayerHostingContextCallback&&) final;
 
     RefPtr<MediaStreamPrivate> protectedMediaStreamPrivate() const;
 
@@ -286,9 +286,9 @@ private:
     VideoFrameRotation m_videoRotation { };
     bool m_videoMirrored { false };
 
-    Ref<const Logger> m_logger;
+    const Ref<const Logger> m_logger;
     const uint64_t m_logIdentifier;
-    std::unique_ptr<VideoLayerManagerObjC> m_videoLayerManager;
+    const UniqueRef<VideoLayerManagerObjC> m_videoLayerManager;
 
     // SampleBufferDisplayLayerClient
     void sampleBufferDisplayLayerStatusDidFail() final;
@@ -320,7 +320,7 @@ private:
 
     std::optional<CGRect> m_storedBounds;
     static NativeImageCreator m_nativeImageCreator;
-    LayerHostingContextIDCallback m_layerHostingContextIDCallback;
+    LayerHostingContextCallback m_layerHostingContextCallback;
     bool m_shouldMaintainAspectRatio { true };
 };
 

@@ -28,6 +28,7 @@
 
 #include "ClipRect.h"
 #include "ColorSerialization.h"
+#include "ContainerNodeInlines.h"
 #include "Document.h"
 #include "ElementInlines.h"
 #include "FrameSelection.h"
@@ -62,6 +63,7 @@
 #include "RenderLineBreak.h"
 #include "RenderListItem.h"
 #include "RenderListMarker.h"
+#include "RenderObjectInlines.h"
 #include "RenderQuote.h"
 #include "RenderSVGContainer.h"
 #include "RenderSVGGradientStop.h"
@@ -159,7 +161,7 @@ String quoteAndEscapeNonPrintables(StringView s)
     StringBuilder result;
     result.append('"');
     for (unsigned i = 0; i != s.length(); ++i) {
-        UChar c = s[i];
+        char16_t c = s[i];
         if (c == '\\') {
             result.append("\\\\"_s);
         } else if (c == '"') {
@@ -402,7 +404,7 @@ void writeDebugInfo(TextStream& ts, const RenderObject& object, OptionSet<Render
     }
 
     if (behavior.contains(RenderAsTextFlag::ShowLayoutState)) {
-        bool needsLayout = object.selfNeedsLayout() || object.needsPositionedMovementLayout() || object.posChildNeedsLayout() || object.normalChildNeedsLayout();
+        bool needsLayout = object.selfNeedsLayout() || object.needsOutOfFlowMovementLayout() || object.outOfFlowChildNeedsLayout() || object.normalChildNeedsLayout();
         if (needsLayout)
             ts << " (needs layout:"_s;
         
@@ -412,7 +414,7 @@ void writeDebugInfo(TextStream& ts, const RenderObject& object, OptionSet<Render
             havePrevious = true;
         }
 
-        if (object.needsPositionedMovementLayout()) {
+        if (object.needsOutOfFlowMovementLayout()) {
             if (havePrevious)
                 ts << ',';
             havePrevious = true;
@@ -426,7 +428,7 @@ void writeDebugInfo(TextStream& ts, const RenderObject& object, OptionSet<Render
             ts << " child"_s;
         }
 
-        if (object.posChildNeedsLayout()) {
+        if (object.outOfFlowChildNeedsLayout()) {
             if (havePrevious)
                 ts << ',';
             ts << " positioned child"_s;
@@ -657,7 +659,7 @@ static void writeLayers(TextStream& ts, const RenderLayer& rootLayer, RenderLaye
     ClipRect damageRect;
     ClipRect clipRectToApply;
     LayoutSize offsetFromRoot = layer.offsetFromAncestor(&rootLayer);
-    layer.calculateRects(RenderLayer::ClipRectsContext(&rootLayer, TemporaryClipRects), paintDirtyRect, layerBounds, damageRect, clipRectToApply, offsetFromRoot);
+    layer.calculateRects(RenderLayer::ClipRectsContext(&rootLayer, PaintingClipRects, RenderLayer::clipRectTemporaryOptions), paintDirtyRect, layerBounds, damageRect, clipRectToApply, offsetFromRoot);
 
     // Ensure our lists are up-to-date.
     layer.updateLayerListsIfNeeded();
@@ -689,8 +691,8 @@ static void writeLayers(TextStream& ts, const RenderLayer& rootLayer, RenderLaye
         
         if (behavior.contains(RenderAsTextFlag::ShowLayerFragments)) {
             LayerFragments layerFragments;
-            layer.collectFragments(layerFragments, &rootLayer, paintDirtyRect, RenderLayer::PaginationInclusionMode::ExcludeCompositedPaginatedLayers, TemporaryClipRects, { RenderLayer::ClipRectsOption::RespectOverflowClip }, offsetFromRoot);
-            
+            layer.collectFragments(layerFragments, &rootLayer, paintDirtyRect, RenderLayer::PaginationInclusionMode::ExcludeCompositedPaginatedLayers, PaintingClipRects, RenderLayer::clipRectTemporaryOptions, offsetFromRoot);
+
             if (layerFragments.size() > 1) {
                 TextStream::IndentScope indentScope(ts, 2);
                 for (unsigned i = 0; i < layerFragments.size(); ++i) {

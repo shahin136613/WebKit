@@ -108,7 +108,7 @@ namespace TestWebKitAPI {
 static IMP makeQueryParameterRequestHandler(NSArray<NSString *> *parameters, NSArray<NSString *> *domains, NSArray<NSString *> *paths, bool& didHandleRequest)
 {
     return imp_implementationWithBlock([&didHandleRequest, parameters = RetainPtr { parameters }, domains = RetainPtr { domains }, paths = RetainPtr { paths }](WPResources *, WPResourceRequestOptions *, void(^completion)(WPLinkFilteringData *, NSError *)) mutable {
-        RunLoop::protectedMain()->dispatch([&didHandleRequest, parameters = WTFMove(parameters), domains = WTFMove(domains), paths = WTFMove(paths), completion = makeBlockPtr(completion)]() mutable {
+        RunLoop::mainSingleton().dispatch([&didHandleRequest, parameters = WTFMove(parameters), domains = WTFMove(domains), paths = WTFMove(paths), completion = makeBlockPtr(completion)]() mutable {
             auto data = adoptNS([PAL::allocWPLinkFilteringDataInstance() initWithQueryParameters:parameters.get()
 #if defined(HAS_WEB_PRIVACY_LINK_FILTERING_RULE_PATH)
                 domains:domains.get() paths:paths.get()
@@ -123,7 +123,7 @@ static IMP makeQueryParameterRequestHandler(NSArray<NSString *> *parameters, NSA
 static IMP makeAllowedLinkFilteringDataRequestHandler(NSArray<NSString *> *parameters)
 {
     return imp_implementationWithBlock([parameters = RetainPtr { parameters }](WPResources *, WPResourceRequestOptions *, void(^completion)(WPLinkFilteringData *, NSError *)) mutable {
-        RunLoop::protectedMain()->dispatch([parameters = WTFMove(parameters), completion = makeBlockPtr(completion)]() mutable {
+        RunLoop::mainSingleton().dispatch([parameters = WTFMove(parameters), completion = makeBlockPtr(completion)]() mutable {
             auto data = adoptNS([PAL::allocWPLinkFilteringDataInstance() initWithQueryParameters:parameters.get()]);
             completion(data.get(), nil);
         });
@@ -132,7 +132,7 @@ static IMP makeAllowedLinkFilteringDataRequestHandler(NSArray<NSString *> *param
 
 class AllowedLinkFilteringDataRequestSwizzler {
     WTF_MAKE_NONCOPYABLE(AllowedLinkFilteringDataRequestSwizzler);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(AllowedLinkFilteringDataRequestSwizzler);
 public:
     AllowedLinkFilteringDataRequestSwizzler(NSArray<NSString *> *parameters)
     {
@@ -149,7 +149,7 @@ private:
 
 class QueryParameterRequestSwizzler {
     WTF_MAKE_NONCOPYABLE(QueryParameterRequestSwizzler);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(QueryParameterRequestSwizzler);
 public:
     QueryParameterRequestSwizzler(NSArray<NSString *> *parameters, NSArray<NSString *> *domains, NSArray<NSString *> *paths)
     {
@@ -468,6 +468,29 @@ TEST(AdvancedPrivacyProtections, RemoveTrackingQueryParametersForMainResourcesOn
     }
 }
 
+TEST(AdvancedPrivacyProtections, DoNotRemoveTrackingQueryParametersWith8BitValues)
+{
+    [TestProtocol registerWithScheme:@"https"];
+    QueryParameterRequestSwizzler swizzler { @[ @"foo" ], @[ @"" ], @[ @"" ] };
+    RetainPtr webView = createWebViewWithAdvancedPrivacyProtections(NO);
+
+    auto testURL = [&](NSString *urlString, NSString *expectedResult) {
+        [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:urlString]]];
+        EXPECT_WK_STREQ(expectedResult, [webView URL].absoluteString);
+    };
+
+    testURL(@"https://bundle-file/simple.html?foo=0", @"https://bundle-file/simple.html");
+    testURL(@"https://bundle-file/simple.html?foo=256", @"https://bundle-file/simple.html");
+    testURL(@"https://bundle-file/simple.html?foo=aaa", @"https://bundle-file/simple.html");
+    testURL(@"https://bundle-file/simple.html?foo=-01", @"https://bundle-file/simple.html");
+    testURL(@"https://bundle-file/simple.html?foo=0000", @"https://bundle-file/simple.html");
+    testURL(@"https://bundle-file/simple.html?foo=1+&bar=2", @"https://bundle-file/simple.html?bar=2");
+    testURL(@"https://bundle-file/simple.html?foo=1%20&bar=2", @"https://bundle-file/simple.html?bar=2");
+    testURL(@"https://bundle-file/simple.html?foo=000", @"https://bundle-file/simple.html?foo=000");
+    testURL(@"https://bundle-file/simple.html?foo=010", @"https://bundle-file/simple.html?foo=010");
+    testURL(@"https://bundle-file/simple.html?foo=255", @"https://bundle-file/simple.html?foo=255");
+}
+
 TEST(AdvancedPrivacyProtections, ApplyNavigationalProtectionsAfterMultiplePSON)
 {
     QueryParameterRequestSwizzler swizzler { @[ @"foo", @"bar", @"baz" ], @[ @"", @"", @"" ], @[ @"", @"", @"" ] };
@@ -497,7 +520,7 @@ TEST(AdvancedPrivacyProtections, ApplyNavigationalProtectionsAfterMultiplePSON)
     };
     [webView setNavigationDelegate:navigationDelegate.get()];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:makeString("http://localhost:"_s, server.port(), "/"_s)]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:makeString("http://localhost:"_s, server.port(), "/"_s).createNSString().get()]).get()]).get()];
     Util::run(&didCallDecisionHandler);
     finishedSuccessfully = false;
     Util::run(&finishedSuccessfully);
@@ -537,7 +560,7 @@ TEST(AdvancedPrivacyProtections, DoNotHideReferrerInPopupWindow)
 
     // Load the main page on 127.0.0.1, which opens a cross-origin popup window on localhost.
     auto mainURLPrefix = "http://127.0.0.1:"_s;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:makeString(mainURLPrefix, server.port(), "/main"_s)]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:makeString(mainURLPrefix, server.port(), "/main"_s).createNSString().get()]).get()]).get()];
 
     // Wait for the popup window to finish loading.
     Util::waitForConditionWithLogging([&] {
@@ -594,12 +617,12 @@ static RetainPtr<TestWKWebView> setUpWebViewForTestingQueryParameterHiding(NSStr
 
     [configuration setURLSchemeHandler:handler.get() forURLScheme:@"custom"];
 
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration.get()]);
-    [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+    RetainPtr webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView synchronouslyLoadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:@"about:blank"]).get()]).get()];
 
-    auto request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:requestURLString]];
+    RetainPtr request = adoptNS([[NSMutableURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:requestURLString]).get()]);
     [request setValue:referrer forHTTPHeaderField:@"referer"];
-    [webView synchronouslyLoadRequest:request];
+    [webView synchronouslyLoadRequest:request.get()];
     [webView callAsyncJavaScriptAndWait:@"return new Promise(resolve => setTimeout(resolve, 0))"];
 
     return webView;
@@ -718,10 +741,10 @@ static RetainPtr<TestWKWebView> setUpWebViewForTestingTrackerDomainBlocking(Stri
     [navigationDelegate allowAnyTLSCertificate];
     [webView setNavigationDelegate:navigationDelegate.get()];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://webkit.org/initialize"]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:@"https://webkit.org/initialize"]).get()]).get()];
     [navigationDelegate waitForDidFinishNavigation];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:requestURLString]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:requestURLString]).get()]).get()];
     [navigationDelegate waitForDidFinishNavigation];
 
     [webView callAsyncJavaScriptAndWait:@"return new Promise(resolve => setTimeout(resolve, 0))"];
@@ -883,9 +906,9 @@ TEST(AdvancedPrivacyProtections, LinkPreconnectUsesEnhancedPrivacy)
     server.addResponse("/index.html"_s, { createMarkupString(server.port()) });
 
     auto webView = createWebViewWithAdvancedPrivacyProtections(YES, nil, WKWebsiteDataStore.defaultDataStore);
-    auto request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://localhost:%u/index.html", server.port()]]];
-    request._useEnhancedPrivacyMode = YES;
-    [webView synchronouslyLoadRequest:request];
+    RetainPtr request = adoptNS([[NSMutableURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:adoptNS([[NSString alloc] initWithFormat:@"http://localhost:%u/index.html", server.port()]).get()]).get()]);
+    request.get()._useEnhancedPrivacyMode = YES;
+    [webView synchronouslyLoadRequest:request.get()];
 
     do {
         Util::runFor(10_ms);
@@ -919,7 +942,7 @@ static RetainPtr<TestWKWebView> webViewAfterCrossSiteNavigationWithReducedPrivac
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration.get()]);
     [webView setNavigationDelegate:navigationDelegate.get()];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:initialURLString]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:initialURLString]).get()]).get()];
     [navigationDelegate waitForDidFinishNavigation];
 
     [navigationDelegate setDecidePolicyForNavigationActionWithPreferences:[&](WKNavigationAction *action, WKWebpagePreferences *preferences, void (^decisionHandler)(WKNavigationActionPolicy, WKWebpagePreferences *)) {
@@ -943,7 +966,7 @@ TEST(AdvancedPrivacyProtections, DoNotHideReferrerAfterReducingPrivacyProtection
 
     server.addResponse("/index1.html"_s, { makeString("<a href='http://127.0.0.1:"_s, server.port(), "/index2.html'>Link</a>"_s) });
 
-    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/index1.html"_s));
+    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/index1.html"_s).createNSString().get());
 
     NSString *result = [webView objectByEvaluatingJavaScript:@"window.result"];
     NSString *expectedReferrer = [NSString stringWithFormat:@"http://localhost:%d/", server.port()];
@@ -959,7 +982,7 @@ TEST(AdvancedPrivacyProtections, DoNotHideReferrerAfterReducingPrivacyProtection
     server.addResponse("/source.html"_s, { makeString("<a href='http://127.0.0.1:"_s, server.port(), "/redirect.html'>Link</a>"_s) });
     server.addResponse("/redirect.html"_s, { makeString("<script>window.location = 'http://localhost:"_s, server.port(), "/destination.html';</script>"_s) });
 
-    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/source.html"_s), true);
+    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/source.html"_s).createNSString().get(), true);
 
     NSString *result = [webView objectByEvaluatingJavaScript:@"window.result"];
     NSString *expectedReferrer = [NSString stringWithFormat:@"http://127.0.0.1:%d/", server.port()];
@@ -975,7 +998,7 @@ TEST(AdvancedPrivacyProtections, DoNotHideReferrerAfterReducingPrivacyProtection
     server.addResponse("/source.html"_s, { makeString("<a href='http://127.0.0.1:"_s, server.port(), "/redirect'>Link</a>"_s) });
     server.addResponse("/redirect"_s, { 302, {{"Location"_s, makeString("http://localhost:"_s, server.port(), "/destination.html"_s) }}, "redirecting..."_s });
 
-    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/source.html"_s));
+    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/source.html"_s).createNSString().get());
 
     NSString *result = [webView objectByEvaluatingJavaScript:@"window.result"];
     NSString *expectedReferrer = [NSString stringWithFormat:@"http://localhost:%d/", server.port()];
@@ -1001,7 +1024,7 @@ TEST(AdvancedPrivacyProtections, HideScreenMetricsFromBindings)
     auto webView = createWebViewWithAdvancedPrivacyProtections();
 
     [webView setUIDelegate:uiDelegate.get()];
-    [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://bundle-file/simple-responsive-page.html"]]];
+    [webView synchronouslyLoadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:@"https://bundle-file/simple-responsive-page.html"]).get()]).get()];
 
     auto bruteForceMediaQueryScript = [](NSString *key) -> NSString * {
         return [NSString stringWithFormat:@"(function() {"
@@ -1134,7 +1157,7 @@ TEST(AdvancedPrivacyProtections, AddNoiseToWebAudioAPIsAfterMultiplePSON)
     };
     [webView setNavigationDelegate:navigationDelegate.get()];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:makeString("http://localhost:"_s, server.port(), "/"_s)]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:makeString("http://localhost:"_s, server.port(), "/"_s).createNSString().get()]).get()]).get()];
     Util::run(&didCallDecisionHandler);
     finishedSuccessfully = false;
     Util::run(&finishedSuccessfully);
@@ -1170,7 +1193,7 @@ TEST(AdvancedPrivacyProtections, AddNoiseToWebAudioAPIsAfterReducingPrivacyProte
         decisionHandler(WKNavigationActionPolicyAllow, preferences);
     }];
 
-    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/index1.html"_s));
+    auto webView = webViewAfterCrossSiteNavigationWithReducedPrivacy(makeString("http://localhost:"_s, server.port(), "/index1.html"_s).createNSString().get());
 
     [webView setNavigationDelegate:navigationDelegate.get()];
     [navigationDelegate waitForDidFinishNavigation];
@@ -1411,7 +1434,7 @@ TEST(AdvancedPrivacyProtections, Canvas2DQuirks)
     };
     [webView setNavigationDelegate:delegate.get()];
 
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://site.example/"]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:@"https://site.example/"]).get()]).get()];
 
     while (!finishedSuccessfully)
         TestWebKitAPI::Util::spinRunLoop(5);
@@ -1433,7 +1456,7 @@ TEST(AdvancedPrivacyProtections, Canvas2DQuirks)
     EXPECT_TRUE(finishedSuccessfully);
 
     finishedSuccessfully = false;
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://site.example/"]]];
+    [webView loadRequest:adoptNS([[NSURLRequest alloc] initWithURL:adoptNS([[NSURL alloc] initWithString:@"https://site.example/"]).get()]).get()];
 
     while (!finishedSuccessfully)
         TestWebKitAPI::Util::spinRunLoop(5);

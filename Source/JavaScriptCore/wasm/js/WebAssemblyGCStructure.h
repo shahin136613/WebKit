@@ -43,6 +43,7 @@ namespace JSC {
 class WebAssemblyGCStructure final : public Structure {
     typedef Structure Base;
 public:
+    friend class Structure;
 
     template<typename CellType, SubspaceAccess>
     static GCClient::IsoSubspace* subspaceFor(VM& vm)
@@ -55,16 +56,11 @@ public:
 
     static WebAssemblyGCStructure* create(VM&, JSGlobalObject*, const TypeInfo&, const ClassInfo*, Ref<const Wasm::TypeDefinition>&&, Ref<const Wasm::RTT>&&);
 
-    void destruct()
-    {
-        auto rtt = WTFMove(m_rtt);
-        auto type = WTFMove(m_type);
-    }
-
     static constexpr ptrdiff_t offsetOfRTT() { return OBJECT_OFFSETOF(WebAssemblyGCStructure, m_rtt); }
 
 private:
     WebAssemblyGCStructure(VM&, JSGlobalObject*, const TypeInfo&, const ClassInfo*, Ref<const Wasm::TypeDefinition>&&, Ref<const Wasm::RTT>&&);
+    WebAssemblyGCStructure(VM&, WebAssemblyGCStructure* previous);
 
     Ref<const Wasm::RTT> m_rtt;
     Ref<const Wasm::TypeDefinition> m_type;

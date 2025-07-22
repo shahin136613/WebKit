@@ -162,7 +162,7 @@ public:
     // Passed in context is the context through which the contents was drawn.
     WEBCORE_EXPORT RetainPtr<CGImageRef> createImage(CGContextRef);
     // Passed in context is the context through which the contents was drawn.
-    WEBCORE_EXPORT static RetainPtr<CGImageRef> sinkIntoImage(std::unique_ptr<IOSurface>, RetainPtr<CGContextRef>);
+    WEBCORE_EXPORT static RetainPtr<CGImageRef> sinkIntoImage(std::unique_ptr<IOSurface>, RetainPtr<CGContextRef> = nullptr);
 
     WEBCORE_EXPORT static Name nameForRenderingPurpose(RenderingPurpose);
     Name name() const { return m_name; }
@@ -174,7 +174,7 @@ public:
 
     IOSurfaceRef surface() const { return m_surface.get(); }
 
-    WEBCORE_EXPORT RetainPtr<CGContextRef> createPlatformContext(PlatformDisplayID = 0);
+    WEBCORE_EXPORT RetainPtr<CGContextRef> createPlatformContext(PlatformDisplayID = 0, std::optional<CGImageAlphaInfo> = std::nullopt);
 
     struct LockAndContext {
         IOSurface::Locker<AccessMode::ReadWrite> lock;
@@ -194,6 +194,12 @@ public:
     bool hasFormat(Format format) const { return m_format && *m_format == format; }
     IntSize size() const { return m_size; }
     size_t totalBytes() const { return m_totalBytes; }
+
+#if HAVE(SUPPORT_HDR_DISPLAY)
+    WEBCORE_EXPORT void setContentEDRHeadroom(float);
+    WEBCORE_EXPORT std::optional<float> contentEDRHeadroom() const;
+    WEBCORE_EXPORT void loadContentEDRHeadroom();
+#endif
 
     WEBCORE_EXPORT DestinationColorSpace colorSpace();
     WEBCORE_EXPORT IOSurfaceID surfaceID() const;
@@ -234,6 +240,9 @@ private:
     std::optional<DestinationColorSpace> m_colorSpace;
     IntSize m_size;
     size_t m_totalBytes;
+#if HAVE(SUPPORT_HDR_DISPLAY)
+    std::optional<float> m_contentEDRHeadroom;
+#endif
 
     ProcessIdentity m_resourceOwner;
 

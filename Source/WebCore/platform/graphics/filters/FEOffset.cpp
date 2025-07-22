@@ -4,7 +4,7 @@
  * Copyright (C) 2005 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2009 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2021-2022 Apple Inc.  All rights reserved.
+ * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -90,7 +90,7 @@ IntOutsets FEOffset::calculateOutsets(const FloatSize& offset)
     return outsets;
 }
 
-bool FEOffset::resultIsAlphaImage(const FilterImageVector& inputs) const
+bool FEOffset::resultIsAlphaImage(std::span<const Ref<FilterImage>> inputs) const
 {
     return inputs[0]->isAlphaImage();
 }

@@ -63,6 +63,7 @@ static_assert(sizeof(StyleRuleBase) == sizeof(SameSizeAsStyleRuleBase), "StyleRu
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRuleBase);
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRule);
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRuleWithNesting);
+DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleRuleNestedDeclarations);
 
 Ref<CSSRule> StyleRuleBase::createCSSOMWrapper(CSSStyleSheet& parentSheet) const
 {
@@ -318,9 +319,9 @@ Vector<Ref<StyleRule>> StyleRule::splitIntoMultipleRulesWithMaximumSelectorCompo
     Vector<Ref<StyleRule>> rules;
     Vector<const CSSSelector*> componentsSinceLastSplit;
 
-    for (const CSSSelector* selector = selectorList().first(); selector; selector = CSSSelectorList::next(selector)) {
+    for (auto& selector : selectorList()) {
         Vector<const CSSSelector*, 8> componentsInThisSelector;
-        for (const CSSSelector* component = selector; component; component = component->tagHistory())
+        for (const CSSSelector* component = &selector; component; component = component->tagHistory())
             componentsInThisSelector.append(component);
 
         if (componentsInThisSelector.size() + componentsSinceLastSplit.size() > maxCount && !componentsSinceLastSplit.isEmpty()) {
@@ -517,7 +518,7 @@ void StyleRuleGroup::wrapperInsertRule(unsigned index, Ref<StyleRuleBase>&& rule
 
 void StyleRuleGroup::wrapperRemoveRule(unsigned index)
 {
-    m_childRules.remove(index);
+    m_childRules.removeAt(index);
 }
 
 String StyleRuleGroup::debugDescription() const

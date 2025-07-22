@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2005-2023 Apple Inc. All rights reserved.
+ *  Copyright (C) 2005-2025 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -75,7 +75,7 @@ namespace WTF {
 template<typename T> class RetainPtr;
 
 template<typename T> constexpr bool IsNSType = std::is_convertible_v<T, id>;
-template<typename T> using RetainPtrType = std::conditional_t<IsNSType<T>, std::remove_pointer_t<T>, T>;
+template<typename T> using RetainPtrType = std::conditional_t<IsNSType<T> && !std::is_same_v<T, id>, std::remove_pointer_t<T>, T>;
 
 template<typename T> constexpr RetainPtr<RetainPtrType<T>> adoptCF(T CF_RELEASES_ARGUMENT) WARN_UNUSED_RETURN;
 
@@ -121,9 +121,7 @@ public:
         return std::exchange(m_ptr, nullptr);
     }
 
-#if HAVE(CFAUTORELEASE)
     PtrType autorelease();
-#endif
 
 #ifdef __OBJC__
     id bridgingAutorelease();
@@ -167,9 +165,7 @@ private:
 
     static inline void retainFoundationPtr(CFTypeRef ptr) { CFRetain(ptr); }
     static inline void releaseFoundationPtr(CFTypeRef ptr) { CFRelease(ptr); }
-#if HAVE(CFAUTORELEASE)
     static inline void autoreleaseFoundationPtr(CFTypeRef ptr) { CFAutorelease(ptr); }
-#endif
 
 #ifdef __OBJC__
 #if __has_feature(objc_arc)
@@ -222,7 +218,6 @@ template<typename T> inline void RetainPtr<T>::clear()
         releaseFoundationPtr(ptr);
 }
 
-#if HAVE(CFAUTORELEASE)
 template<typename T> inline auto RetainPtr<T>::autorelease() -> PtrType
 {
     auto ptr = std::exchange(m_ptr, nullptr);
@@ -230,7 +225,6 @@ template<typename T> inline auto RetainPtr<T>::autorelease() -> PtrType
         autoreleaseFoundationPtr(ptr);
     return ptr;
 }
-#endif // HAVE(CFAUTORELEASE)
 
 #ifdef __OBJC__
 // FIXME: It would be better if we could base the return type on the type that is toll-free bridged with T rather than using id.
@@ -303,11 +297,6 @@ template<typename T, typename U> constexpr bool operator==(const RetainPtr<T>& a
     return a.get() == b; 
 }
 
-template<typename T, typename U> constexpr bool operator==(T* a, const RetainPtr<U>& b)
-{
-    return a == b.get(); 
-}
-
 template<typename T> constexpr RetainPtr<RetainPtrType<T>> adoptCF(T CF_RELEASES_ARGUMENT ptr)
 {
     static_assert(!IsNSType<T>, "Don't use adoptCF with Objective-C pointer types, use adoptNS.");
@@ -368,10 +357,18 @@ inline CFHashCode safeCFHash(CFTypeRef a)
     return a ? CFHash(a) : 0;
 }
 
+template<typename T, typename U>
+ALWAYS_INLINE void lazyInitialize(const RetainPtr<T>& ptr, RetainPtr<U>&& obj)
+{
+    RELEASE_ASSERT(!ptr);
+    const_cast<RetainPtr<T>&>(ptr) = std::move(obj);
+}
+
 } // namespace WTF
 
 using WTF::RetainPtr;
 using WTF::adoptCF;
+using WTF::lazyInitialize;
 using WTF::retainPtr;
 using WTF::safeCFEqual;
 using WTF::safeCFHash;

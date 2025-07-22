@@ -92,6 +92,12 @@ public:
     static WGPUTextureFormat removeSRGBSuffix(WGPUTextureFormat);
     static std::optional<WGPUTextureFormat> resolveTextureFormat(WGPUTextureFormat, WGPUTextureAspect);
     static bool isCompressedFormat(WGPUTextureFormat);
+    enum class CompressFormat {
+        ASTC, // NOLINT
+        BC, // NOLINT
+        ETC // NOLINT
+    };
+    static std::optional<CompressFormat> compressedFormatType(WGPUTextureFormat);
     static bool isRenderableFormat(WGPUTextureFormat, const Device&);
     static bool isColorRenderableFormat(WGPUTextureFormat, const Device&);
     static bool isDepthStencilRenderableFormat(WGPUTextureFormat, const Device&);
@@ -164,7 +170,8 @@ private:
     mutable Vector<uint64_t> m_commandEncoders;
     id<MTLSharedEvent> m_sharedEvent { nil };
     uint64_t m_sharedEventSignalValue { 0 };
-} SWIFT_SHARED_REFERENCE(refTexture, derefTexture);
+// FIXME: remove @safe once rdar://151039766 lands
+} __attribute__((swift_attr("@safe"))) SWIFT_SHARED_REFERENCE(refTexture, derefTexture);
 
 } // namespace WebGPU
 

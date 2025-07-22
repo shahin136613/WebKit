@@ -74,7 +74,7 @@ enum GeneratedOperandType { GeneratedOperandTypeUnknown, GeneratedOperandInteger
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(SpeculativeJIT);
 class SpeculativeJIT : public JITCompiler {
     using Base = JITCompiler;
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(SpeculativeJIT);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(SpeculativeJIT, SpeculativeJIT);
     friend struct OSRExit;
 private:
     typedef JITCompiler::TrustedImm32 TrustedImm32;
@@ -243,8 +243,7 @@ public:
     }
     GPRReg allocate(GPRReg specific)
     {
-        if (specific == InvalidGPRReg)
-            allocate();
+        ASSERT(specific != InvalidGPRReg);
 #if ENABLE(DFG_REGISTER_ALLOCATION_VALIDATION)
         addRegisterAllocationAtOffset(debugOffset());
 #endif
@@ -572,8 +571,8 @@ public:
     bool isKnownNotCell(Node* node) { return !(m_state.forNode(node).m_type & SpecCell); }
     bool isKnownNotOther(Node* node) { return !(m_state.forNode(node).m_type & SpecOther); }
 
-    bool canBeRope(Edge&);
-    
+    bool canBeRope(Edge);
+
     UniquedStringImpl* identifierUID(unsigned index)
     {
         return m_graph.identifiers()[index];
@@ -660,7 +659,7 @@ public:
         case ArithBitLShift:
             lshift32(op1, Imm32(shiftAmount), result);
             break;
-        case BitURShift:
+        case ArithBitURShift:
             urshift32(op1, Imm32(shiftAmount), result);
             break;
         default:
@@ -676,7 +675,7 @@ public:
         case ArithBitLShift:
             lshift32(op1, shiftAmount, result);
             break;
-        case BitURShift:
+        case ArithBitURShift:
             urshift32(op1, shiftAmount, result);
             break;
         default:
@@ -1434,13 +1433,13 @@ public:
     
     void emitSwitchIntJump(SwitchData*, GPRReg value, GPRReg scratch);
     void emitSwitchImm(Node*, SwitchData*);
-    void emitSwitchCharStringJump(Node*, SwitchData*, GPRReg value, GPRReg scratch);
+    void emitSwitchCharStringJump(Node*, SwitchData*, GPRReg value, GPRReg scratch, Edge stringEdge);
     void emitSwitchChar(Node*, SwitchData*);
     void emitBinarySwitchStringRecurse(
         SwitchData*, const Vector<StringSwitchCase>&, unsigned numChecked,
         unsigned begin, unsigned end, GPRReg buffer, GPRReg length, GPRReg temp,
         unsigned alreadyCheckedLength, bool checkedExactLength);
-    void emitSwitchStringOnString(Node*, SwitchData*, GPRReg string);
+    void emitSwitchStringOnString(Node*, SwitchData*, GPRReg string, Edge stringEdge);
     void emitSwitchString(Node*, SwitchData*);
     void emitSwitch(Node*);
     
@@ -1543,7 +1542,7 @@ public:
     void compileGetPrivateNameById(Node*);
     void compileGetPrivateNameByVal(Node*, JSValueRegs base, JSValueRegs property);
 
-    void compileGetScope(Node*);
+    void compileGetScopeOrGetEvalScope(Node*);
     void compileSkipScope(Node*);
     void compileGetGlobalObject(Node*);
     void compileGetGlobalThis(Node*);
@@ -1582,6 +1581,7 @@ public:
     void emitUntypedOrBigIntRightShiftBitOp(Node*);
     void compileValueLShiftOp(Node*);
     void compileValueBitRShift(Node*);
+    void compileValueBitURShift(Node*);
     void compileShiftOp(Node*);
 
     template <typename Generator, typename RepatchingFunction, typename NonRepatchingFunction>
@@ -1692,6 +1692,7 @@ public:
     void compileRegExpMatchFastGlobal(Node*);
     void compileRegExpTest(Node*);
     void compileRegExpTestInline(Node*);
+    void compileRegExpSearch(Node*);
     void compileStringReplace(Node*);
     void compileStringReplaceAll(Node*);
     void compileStringReplaceString(Node*);
@@ -1795,6 +1796,9 @@ public:
     void compileDateSet(Node*);
     void compileGlobalIsNaN(Node*);
     void compileNumberIsNaN(Node*);
+    void compileGlobalIsFinite(Node*);
+    void compileNumberIsFinite(Node*);
+    void compileNumberIsSafeInteger(Node*);
     void compileToIntegerOrInfinity(Node*);
     void compileToLength(Node*);
 
@@ -1876,12 +1880,15 @@ public:
     // Add a speculation check with additional recovery.
     void speculationCheck(ExitKind, JSValueSource, Node*, Jump jumpToFail, const SpeculationRecovery&);
     void speculationCheck(ExitKind, JSValueSource, Edge, Jump jumpToFail, const SpeculationRecovery&);
+
+    void speculationCheckOutOfMemory(JSValueSource, Node*, const JumpList&);
     
     void compileInvalidationPoint(Node*);
     
     void unreachable(Node*);
-    
+
     // Called when we statically determine that a speculation will fail.
+    void terminateUnreachableNode();
     void terminateSpeculativeExecution(ExitKind, JSValueRegs, Node*);
     void terminateSpeculativeExecution(ExitKind, JSValueRegs, Edge);
     
@@ -1983,7 +1990,10 @@ public:
     void checkArray(Node*);
     void arrayify(Node*, GPRReg baseReg, GPRReg propertyReg);
     void arrayify(Node*);
-    
+
+    unsigned appendOSRExit(OSRExit&&, bool isExceptionHandler = false);
+    unsigned appendExceptionHandlingOSRExit(ExitKind, unsigned eventStreamIndex, CodeOrigin, HandlerInfo* exceptionHandler, CallSiteIndex, MacroAssembler::JumpList jumpsToFail = MacroAssembler::JumpList());
+
     template<bool strict>
     GPRReg fillSpeculateInt32Internal(Edge, DataFormat& returnFormat);
     
@@ -2382,10 +2392,6 @@ class JSValueRegsTemporary {
 public:
     JSValueRegsTemporary();
     JSValueRegsTemporary(SpeculativeJIT*);
-    JSValueRegsTemporary(SpeculativeJIT*, GPRReg specificPayload);
-#if USE(JSVALUE32_64)
-    JSValueRegsTemporary(SpeculativeJIT*, GPRReg specificPayload, GPRReg specificTag);
-#endif
     template<typename T>
     JSValueRegsTemporary(SpeculativeJIT*, ReuseTag, T& operand, WhichValueWord resultRegWord = PayloadWord);
     JSValueRegsTemporary(SpeculativeJIT*, ReuseTag, JSValueOperand&);
@@ -2439,7 +2445,7 @@ public:
 
     ~FPRTemporary()
     {
-        if (LIKELY(m_jit))
+        if (m_jit) [[likely]]
             m_jit->unlock(fpr());
     }
 

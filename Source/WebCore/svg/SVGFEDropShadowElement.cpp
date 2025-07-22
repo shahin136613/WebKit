@@ -21,12 +21,14 @@
 #include "config.h"
 #include "SVGFEDropShadowElement.h"
 
+#include "ContainerNodeInlines.h"
 #include "NodeName.h"
 #include "RenderElement.h"
 #include "RenderStyle.h"
 #include "SVGFilter.h"
 #include "SVGNames.h"
 #include "SVGParserUtilities.h"
+#include "SVGPropertyOwnerRegistry.h"
 #include "SVGRenderStyle.h"
 #include <wtf/TZoneMallocInlines.h>
 
@@ -99,7 +101,7 @@ void SVGFEDropShadowElement::svgAttributeChanged(const QualifiedName& attrName)
             markFilterEffectForRebuild();
             return;
         }
-        FALLTHROUGH;
+        [[fallthrough]];
     }
     case AttributeNames::dxAttr:
     case AttributeNames::dyAttr: {

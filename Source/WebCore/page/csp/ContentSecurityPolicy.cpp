@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google, Inc. All rights reserved.
- * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,6 +60,7 @@
 #include <JavaScriptCore/JSGlobalObject.h>
 #include <JavaScriptCore/ScriptCallStack.h>
 #include <JavaScriptCore/ScriptCallStackFactory.h>
+#include <algorithm>
 #include <pal/crypto/CryptoDigest.h>
 #include <pal/text/TextEncoding.h>
 #include <wtf/JSONValues.h>
@@ -247,7 +248,7 @@ void ContentSecurityPolicy::didReceiveHeaders(const ContentSecurityPolicy& other
     m_referrer = other.m_referrer;
     m_httpStatusCode = other.m_httpStatusCode;
     m_upgradeInsecureRequests = other.m_upgradeInsecureRequests;
-    m_insecureNavigationRequestsToUpgrade.add(other.m_insecureNavigationRequestsToUpgrade.begin(), other.m_insecureNavigationRequestsToUpgrade.end());
+    m_insecureNavigationRequestsToUpgrade.addAll(other.m_insecureNavigationRequestsToUpgrade);
 }
 
 void ContentSecurityPolicy::didReceiveHeader(const String& header, ContentSecurityPolicyHeaderType type, ContentSecurityPolicy::PolicyFrom policyFrom, String&& referrer, int httpStatusCode)
@@ -370,7 +371,8 @@ bool ContentSecurityPolicy::allowContentSecurityPolicySourceStarToMatchAnyProtoc
 }
 
 template<typename Predicate, typename... Args>
-typename std::enable_if<!std::is_convertible<Predicate, ContentSecurityPolicy::ViolatedDirectiveCallback>::value, bool>::type ContentSecurityPolicy::allPoliciesWithDispositionAllow(Disposition disposition, Predicate&& predicate, Args&&... args) const
+bool ContentSecurityPolicy::allPoliciesWithDispositionAllow(Disposition disposition, Predicate&& predicate, Args&&... args) const
+    requires (!std::is_convertible_v<Predicate, ContentSecurityPolicy::ViolatedDirectiveCallback>)
 {
     bool isReportOnly = disposition == ContentSecurityPolicy::Disposition::ReportOnly;
     for (auto& policy : m_policies) {
@@ -842,7 +844,7 @@ bool ContentSecurityPolicy::requireTrustedTypesForSinkGroup(const String& sinkGr
 // https://w3c.github.io/trusted-types/dist/spec/#should-block-sink-type-mismatch
 bool ContentSecurityPolicy::allowMissingTrustedTypesForSinkGroup(const String& stringContext, const String& sink, const String& sinkGroup, StringView source) const
 {
-    return allOf(m_policies, [&](auto& policy) {
+    return std::ranges::all_of(m_policies, [&](auto& policy) {
         bool isAllowed = true;
         if (policy->requiresTrustedTypesForScript() && sinkGroup == "script"_s) {
             if (!policy->isReportOnly())
@@ -1144,7 +1146,7 @@ void ContentSecurityPolicy::logToConsole(const String& message, const String& co
     if (message.isEmpty())
         return;
 
-    if (!m_isReportingEnabled)
+    if (!m_isReportingEnabled || !m_isReportingToConsoleEnabled)
         return;
 
     if (m_client)
@@ -1163,7 +1165,7 @@ void ContentSecurityPolicy::upgradeInsecureRequestIfNeeded(ResourceRequest& requ
 {
     URL url = request.url();
     upgradeInsecureRequestIfNeeded(url, requestType, alwaysUpgradeRequest);
-    request.setURL(url);
+    request.setURL(WTFMove(url));
 }
 
 void ContentSecurityPolicy::upgradeInsecureRequestIfNeeded(URL& url, InsecureRequestType requestType, AlwaysUpgradeRequest alwaysUpgradeRequest) const
@@ -1218,15 +1220,15 @@ void ContentSecurityPolicy::setUpgradeInsecureRequests(bool upgradeInsecureReque
 
 void ContentSecurityPolicy::inheritInsecureNavigationRequestsToUpgradeFromOpener(const ContentSecurityPolicy& other)
 {
-    m_insecureNavigationRequestsToUpgrade.add(other.m_insecureNavigationRequestsToUpgrade.begin(), other.m_insecureNavigationRequestsToUpgrade.end());
+    m_insecureNavigationRequestsToUpgrade.addAll(other.m_insecureNavigationRequestsToUpgrade);
 }
 
-UncheckedKeyHashSet<SecurityOriginData> ContentSecurityPolicy::takeNavigationRequestsToUpgrade()
+HashSet<SecurityOriginData> ContentSecurityPolicy::takeNavigationRequestsToUpgrade()
 {
     return WTFMove(m_insecureNavigationRequestsToUpgrade);
 }
 
-void ContentSecurityPolicy::setInsecureNavigationRequestsToUpgrade(UncheckedKeyHashSet<SecurityOriginData>&& insecureNavigationRequests)
+void ContentSecurityPolicy::setInsecureNavigationRequestsToUpgrade(HashSet<SecurityOriginData>&& insecureNavigationRequests)
 {
     m_insecureNavigationRequestsToUpgrade = WTFMove(insecureNavigationRequests);
 }

@@ -35,7 +35,7 @@ struct CSSParserContext;
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(MutableStyleProperties);
 class MutableStyleProperties final : public StyleProperties {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(MutableStyleProperties);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(MutableStyleProperties, MutableStyleProperties);
 public:
     inline void deref() const;
 
@@ -53,7 +53,7 @@ public:
     bool isEmpty() const { return !propertyCount(); }
     PropertyReference propertyAt(unsigned index) const;
 
-    Iterator<MutableStyleProperties> begin() const { return { *this }; }
+    Iterator<MutableStyleProperties> begin() const LIFETIME_BOUND { return { *this }; }
     static constexpr std::nullptr_t end() { return nullptr; }
     unsigned size() const { return propertyCount(); }
 
@@ -103,7 +103,7 @@ private:
 
     friend class StyleProperties;
 
-    std::unique_ptr<CSSStyleProperties> m_cssomWrapper;
+    const std::unique_ptr<CSSStyleProperties> m_cssomWrapper;
     Vector<CSSProperty, 4> m_propertyVector;
 };
 

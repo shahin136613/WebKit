@@ -32,8 +32,10 @@
 #include "config.h"
 #include "BaseDateAndTimeInputType.h"
 
+#include "AXObjectCache.h"
 #include "BaseClickableWithKeyInputType.h"
 #include "Chrome.h"
+#include "ContainerNodeInlines.h"
 #include "DateComponents.h"
 #include "DateTimeChooserParameters.h"
 #include "Decimal.h"
@@ -196,7 +198,7 @@ bool BaseDateAndTimeInputType::typeMismatch() const
 bool BaseDateAndTimeInputType::hasBadInput() const
 {
     ASSERT(element());
-    return protectedElement()->value().isEmpty() && m_dateTimeEditElement && protectedDateTimeEditElement()->editableFieldsHaveValues();
+    return protectedElement()->value()->isEmpty() && m_dateTimeEditElement && protectedDateTimeEditElement()->editableFieldsHaveValues();
 }
 
 Decimal BaseDateAndTimeInputType::defaultValueForStepUp() const
@@ -259,9 +261,11 @@ String BaseDateAndTimeInputType::visibleValue() const
     return localizeValue(protectedElement()->value());
 }
 
-String BaseDateAndTimeInputType::sanitizeValue(const String& proposedValue) const
+ValueOrReference<String> BaseDateAndTimeInputType::sanitizeValue(const String& proposedValue LIFETIME_BOUND) const
 {
-    return typeMismatchFor(proposedValue) ? emptyString() : proposedValue;
+    if (typeMismatchFor(proposedValue))
+        return emptyString();
+    return proposedValue;
 }
 
 bool BaseDateAndTimeInputType::supportsReadOnly() const
@@ -280,7 +284,7 @@ bool BaseDateAndTimeInputType::valueMissing(const String& value) const
     return protectedElement()->isMutable() && element()->isRequired() && value.isEmpty();
 }
 
-bool BaseDateAndTimeInputType::isKeyboardFocusable(KeyboardEvent*) const
+bool BaseDateAndTimeInputType::isKeyboardFocusable(const FocusEventData&) const
 {
     ASSERT(element());
     Ref input = *element();
@@ -403,7 +407,7 @@ void BaseDateAndTimeInputType::updateInnerTextValue()
 
     DateTimeEditElement::LayoutParameters layoutParameters(input->locale());
 
-    auto date = parseToDateComponents(input->value());
+    auto date = parseToDateComponents(input->value().get());
     if (date)
         setupLayoutParameters(layoutParameters, *date);
     else {
@@ -507,7 +511,7 @@ void BaseDateAndTimeInputType::handleFocusEvent(Node* oldFocusedNode, FocusDirec
         // so that this element no longer has focus. In this case, one of the children should
         // not be focused as the element is losing focus entirely.
         if (RefPtr page = element()->document().page())
-            page->checkedFocusController()->advanceFocus(direction, 0);
+            page->focusController().advanceFocus(direction, 0);
 
     } else {
         // If the element received focus in any other direction, transfer focus to the first focusable child.
@@ -540,8 +544,16 @@ void BaseDateAndTimeInputType::didChangeValueFromControl()
 
     InputType::setValue(value, valueChanged, DispatchNoEvent, DoNotSet);
 
-    if (!valueChanged)
+    if (!valueChanged) {
+        if (CheckedPtr cache = input->protectedDocument()->existingAXObjectCache()) {
+            // This method is called when a sub-field of a date or time input changes. An HTML input's DOM value
+            // only changes when all fields are filled out, but accessibility needs to represent the partial value
+            // for assistive technologies, so notify accessibility here so it can take the appropriate actions, e.g.
+            // updating the accessibility tree.
+            cache->valueChanged(input.get());
+        }
         return;
+    }
 
     if (input->protectedUserAgentShadowRoot()->containsFocusedElement())
         input->dispatchFormControlInputEvent();
@@ -617,10 +629,10 @@ bool BaseDateAndTimeInputType::setupDateTimeChooserParameters(DateTimeChooserPar
         parameters.anchorRectInRootView = IntRect();
     parameters.currentValue = element->value();
 
-    auto* computedStyle = element->computedStyle();
+    CheckedRef computedStyle = *element->computedStyle();
     parameters.isAnchorElementRTL = computedStyle->writingMode().computedTextDirection() == TextDirection::RTL;
-    parameters.useDarkAppearance = document->useDarkAppearance(computedStyle);
-    auto date = valueOrDefault(parseToDateComponents(element->value()));
+    parameters.useDarkAppearance = document->useDarkAppearance(computedStyle.ptr());
+    auto date = valueOrDefault(parseToDateComponents(element->value().get()));
     parameters.hasSecondField = shouldHaveSecondField(date);
     parameters.hasMillisecondField = shouldHaveMillisecondField(date);
 

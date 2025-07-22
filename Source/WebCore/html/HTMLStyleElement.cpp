@@ -28,6 +28,7 @@
 #include "CachedResource.h"
 #include "DOMTokenList.h"
 #include "Document.h"
+#include "DocumentInlines.h"
 #include "Event.h"
 #include "EventNames.h"
 #include "EventSender.h"
@@ -90,7 +91,7 @@ void HTMLStyleElement::attributeChanged(const QualifiedName& name, const AtomStr
     case AttributeNames::mediaAttr:
         m_styleSheetOwner.setMedia(newValue);
         if (RefPtr sheet = this->sheet()) {
-            sheet->setMediaQueries(MQ::MediaQueryParser::parse(newValue, MediaQueryParserContext(document())));
+            sheet->setMediaQueries(MQ::MediaQueryParser::parse(newValue, protectedDocument()->cssParserContext()));
             if (auto* scope = m_styleSheetOwner.styleScope())
                 scope->didChangeStyleSheetContents();
         } else
@@ -118,11 +119,11 @@ void HTMLStyleElement::attributeChanged(const QualifiedName& name, const AtomStr
 DOMTokenList& HTMLStyleElement::blocking()
 {
     if (!m_blockingList) {
-        m_blockingList = makeUniqueWithoutRefCountedCheck<DOMTokenList>(*this, HTMLNames::blockingAttr, [](Document&, StringView token) {
+        lazyInitialize(m_blockingList, makeUniqueWithoutRefCountedCheck<DOMTokenList>(*this, HTMLNames::blockingAttr, [](Document&, StringView token) {
             if (equalLettersIgnoringASCIICase(token, "render"_s))
                 return true;
             return false;
-        });
+        }));
     }
     return *m_blockingList;
 }

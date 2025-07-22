@@ -31,6 +31,7 @@
 #include "WebPreferencesStore.h"
 #include <wtf/RefPtr.h>
 #include <wtf/WeakHashSet.h>
+#include <wtf/WeakPtr.h>
 
 #define DECLARE_PREFERENCE_GETTER_AND_SETTERS(KeyUpper, KeyLower, TypeName, Type, DefaultValue, HumanReadableName, HumanReadableDescription) \
     void set##KeyUpper(const Type& value); \
@@ -93,6 +94,8 @@ public:
 
     void startBatchingUpdates();
     void endBatchingUpdates();
+
+    static void forceSiteIsolationAlwaysOnForTesting();
 
 private:
     void platformInitializeStore();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2013 Google Inc.  All rights reserved.
+ * Copyright (C) 2011, 2013 Google Inc. All rights reserved.
  * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -149,17 +149,13 @@ VTTCueBox::VTTCueBox(Document& document, VTTCue& cue)
 
 void VTTCueBox::applyCSSPropertiesWithRegion()
 {
-    auto textTrackCue = getCue();
-    ASSERT(!textTrackCue || is<VTTCue>(textTrackCue));
-    if (!textTrackCue)
-        return;
-
-    RefPtr cue = dynamicDowncast<VTTCue>(*textTrackCue);
+    ASSERT(!getCue() || is<VTTCue>(getCue()));
+    RefPtr cue = dynamicDowncast<VTTCue>(getCue());
     if (!cue)
         return;
 
     // the 'left' property must be set to left
-    std::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double left) {
+    WTF::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double left) {
         setInlineStyleProperty(CSSPropertyLeft, left, CSSUnitType::CSS_PERCENTAGE);
     }, [this, protectedThis = Ref { *this }] (auto) {
         setInlineStyleProperty(CSSPropertyLeft, CSSValueAuto);
@@ -174,9 +170,8 @@ void VTTCueBox::applyCSSPropertiesWithRegion()
 
 void VTTCueBox::applyCSSProperties()
 {
-    auto textTrackCue = getCue();
-    ASSERT(!textTrackCue || is<VTTCue>(textTrackCue));
-    RefPtr cue = dynamicDowncast<VTTCue>(*textTrackCue);
+    ASSERT(!getCue() || is<VTTCue>(getCue()));
+    RefPtr cue = dynamicDowncast<VTTCue>(getCue());
     if (!cue)
         return;
 
@@ -210,14 +205,14 @@ void VTTCueBox::applyCSSProperties()
     setInlineStyleProperty(CSSPropertyWritingMode, cue->getCSSWritingMode());
 
     // the 'top' property must be set to top
-    std::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double top) {
+    WTF::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double top) {
         setInlineStyleProperty(CSSPropertyTop, top, CSSUnitType::CSS_CQH);
     }, [this, protectedThis = Ref { *this }] (auto) {
         setInlineStyleProperty(CSSPropertyTop, CSSValueAuto);
     }), cue->top());
 
     // the 'left' property must be set to left
-    std::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double left) {
+    WTF::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double left) {
         setInlineStyleProperty(CSSPropertyLeft, left, CSSUnitType::CSS_CQW);
     }, [this, protectedThis = Ref { *this }] (auto) {
         setInlineStyleProperty(CSSPropertyLeft, CSSValueAuto);
@@ -230,14 +225,14 @@ void VTTCueBox::applyCSSProperties()
     // is not a true viewport, but it is a container, so they serve the same purpose.
 
     // the 'width' property must be set to width
-    std::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double width) {
+    WTF::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double width) {
         setInlineStyleProperty(CSSPropertyWidth, width, CSSUnitType::CSS_CQW);
     }, [this, protectedThis = Ref { *this }] (auto) {
         setInlineStyleProperty(CSSPropertyWidth, CSSValueAuto);
     }), cue->width());
 
     // the 'height' property must be set to height
-    std::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double height) {
+    WTF::visit(WTF::makeVisitor([this, protectedThis = Ref { *this }] (double height) {
         setInlineStyleProperty(CSSPropertyHeight, height, CSSUnitType::CSS_CQH);
     }, [this, protectedThis = Ref { *this }] (auto) {
         setInlineStyleProperty(CSSPropertyHeight, CSSValueAuto);
@@ -320,7 +315,7 @@ VTTCue::~VTTCue()
 
 RefPtr<VTTCueBox> VTTCue::createDisplayTree()
 {
-    if (auto* document = this->document())
+    if (RefPtr document = this->document())
         return VTTCueBox::create(*document, *this);
     return nullptr;
 }
@@ -493,7 +488,7 @@ void VTTCue::setText(const String& text)
 void VTTCue::createWebVTTNodeTree()
 {
     if (!m_webVTTNodeTree && document())
-        m_webVTTNodeTree = WebVTTParser::createDocumentFragmentFromCueText(*document(), m_content);
+        m_webVTTNodeTree = WebVTTParser::createDocumentFragmentFromCueText(*protectedDocument().get(), m_content);
 }
 
 static void copyWebVTTNodeToDOMTree(ContainerNode& webVTTNode, Node& parent)
@@ -501,7 +496,7 @@ static void copyWebVTTNodeToDOMTree(ContainerNode& webVTTNode, Node& parent)
     for (RefPtr node = webVTTNode.firstChild(); node; node = node->nextSibling()) {
         RefPtr<Node> clonedNode;
         if (RefPtr element = dynamicDowncast<WebVTTElement>(*node))
-            clonedNode = element->createEquivalentHTMLElement(parent.document());
+            clonedNode = element->createEquivalentHTMLElement(parent.protectedDocument().get());
         else
             clonedNode = node->cloneNode(false);
         parent.appendChild(*clonedNode);
@@ -516,12 +511,12 @@ RefPtr<DocumentFragment> VTTCue::getCueAsHTML()
     if (!m_webVTTNodeTree)
         return nullptr;
 
-    auto* document = this->document();
+    RefPtr document = this->document();
     if (!document)
         return nullptr;
 
     auto clonedFragment = DocumentFragment::create(*document);
-    copyWebVTTNodeToDOMTree(*m_webVTTNodeTree, clonedFragment);
+    copyWebVTTNodeToDOMTree(*protectedWebVTTNodeTree(), clonedFragment);
     return clonedFragment;
 }
 
@@ -531,7 +526,7 @@ RefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
     if (!m_webVTTNodeTree)
         return nullptr;
 
-    auto* document = this->document();
+    RefPtr document = this->document();
     if (!document)
         return nullptr;
 
@@ -540,7 +535,7 @@ RefPtr<DocumentFragment> VTTCue::createCueRenderingTree()
     // The cloned fragment is never exposed to author scripts so it's safe to dispatch events here.
     ScriptDisallowedScope::EventAllowedScope allowedScope(clonedFragment);
 
-    m_webVTTNodeTree->cloneChildNodes(*document, nullptr, clonedFragment);
+    protectedWebVTTNodeTree()->cloneChildNodes(*document, nullptr, clonedFragment);
     return clonedFragment;
 }
 
@@ -567,9 +562,9 @@ void VTTCue::setTrack(TextTrack* track)
     TextTrackCue::setTrack(track);
     if (!m_parsedRegionId.isEmpty()) {
         if (track != nullptr) {
-            if (auto* regions = track->regions()) {
-                if (auto region = regions->getRegionById(m_parsedRegionId))
-                    m_region = RefPtr<VTTRegion>(region);
+            if (RefPtr regions = track->regions()) {
+                if (RefPtr region = regions->getRegionById(m_parsedRegionId))
+                    m_region = WTFMove(region);
             }
         }
     }
@@ -649,7 +644,7 @@ int VTTCue::calculateComputedLinePosition() const
     return n;
 }
 
-static bool isCueParagraphSeparator(UChar character)
+static bool isCueParagraphSeparator(char16_t character)
 {
     // Within a cue, paragraph boundaries are only denoted by Type B characters,
     // such as U+000A LINE FEED (LF), U+0085 NEXT LINE (NEL), and U+2029 PARAGRAPH SEPARATOR.
@@ -681,11 +676,11 @@ void VTTCue::determineTextDirection()
         return;
 
     for (size_t i = 0; i < paragraph.length(); ++i) {
-        UChar current = paragraph[i];
+        char16_t current = paragraph[i];
         if (!current || isCueParagraphSeparator(current))
             return;
 
-        if (UChar current = paragraph[i]) {
+        if (char16_t current = paragraph[i]) {
             UCharDirection charDirection = u_charDirection(current);
             if (charDirection == U_LEFT_TO_RIGHT) {
                 m_displayDirection = CSSValueLtr;
@@ -970,16 +965,17 @@ void VTTCue::obtainCSSBoxes()
     else
         displayTree->applyCSSProperties();
 
-    if (displayTree->document().page()) {
-        auto cssString = displayTree->document().page()->captionUserPreferencesStyleSheet();
-        auto style = HTMLStyleElement::create(HTMLNames::styleTag, displayTree->document(), false);
+    Ref document = displayTree->document();
+    if (document->page()) {
+        auto cssString = document->page()->captionUserPreferencesStyleSheet();
+        auto style = HTMLStyleElement::create(HTMLNames::styleTag, document.get(), false);
         style->setTextContent(WTFMove(cssString));
         displayTree->appendChild(WTFMove(style));
     }
 
     if (const auto& styleSheets = track()->styleSheets()) {
         for (const auto& cssString : *styleSheets) {
-            auto style = HTMLStyleElement::create(HTMLNames::styleTag, displayTree->document(), false);
+            auto style = HTMLStyleElement::create(HTMLNames::styleTag, document.get(), false);
             style->setTextContent(String { cssString });
             displayTree->appendChild(WTFMove(style));
         }
@@ -1442,7 +1438,7 @@ void VTTCue::prepareToSpeak(SpeechSynthesis& speechSynthesis, double rate, doubl
     }
 
     Ref track = *this->track();
-    m_speechSynthesis = &speechSynthesis;
+    m_speechSynthesis = speechSynthesis;
     m_speechUtterance = SpeechSynthesisUtterance::create(Ref { *track->scriptExecutionContext() }, m_content, [protectedThis = Ref { *this }, completion = WTFMove(completion)](const SpeechSynthesisUtterance&) {
         protectedThis->m_speechUtterance = nullptr;
         protectedThis->m_speechSynthesis = nullptr;

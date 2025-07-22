@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,13 +41,15 @@
 #include "WebSWOriginTable.h"
 #include "WebSWServerConnectionMessages.h"
 #include <WebCore/BackgroundFetchInformation.h>
+#include <WebCore/BackgroundFetchRecordInformation.h>
 #include <WebCore/BackgroundFetchRequest.h>
 #include <WebCore/CookieChangeSubscription.h>
 #include <WebCore/DeprecatedGlobalSettings.h>
-#include <WebCore/Document.h>
+#include <WebCore/DocumentInlines.h>
 #include <WebCore/DocumentLoader.h>
 #include <WebCore/FocusController.h>
 #include <WebCore/FrameDestructionObserverInlines.h>
+#include <WebCore/FrameInlines.h>
 #include <WebCore/LocalFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/ProcessIdentifier.h>
@@ -57,6 +59,7 @@
 #include <WebCore/ServiceWorkerJobData.h>
 #include <WebCore/ServiceWorkerRegistrationData.h>
 #include <WebCore/ServiceWorkerRegistrationKey.h>
+#include <WebCore/ServiceWorkerRoute.h>
 #include <WebCore/WorkerFetchResult.h>
 #include <WebCore/WorkerScriptLoader.h>
 #include <wtf/Vector.h>
@@ -105,7 +108,7 @@ void WebSWClientConnection::addServiceWorkerRegistrationInServer(ServiceWorkerRe
 void WebSWClientConnection::removeServiceWorkerRegistrationInServer(ServiceWorkerRegistrationIdentifier identifier)
 {
     if (WebProcess::singleton().removeServiceWorkerRegistration(identifier)) {
-        RunLoop::protectedMain()->dispatch([identifier, connection = Ref { *this }]() {
+        RunLoop::mainSingleton().dispatch([identifier, connection = Ref { *this }]() {
             connection->send(Messages::WebSWServerConnection::RemoveServiceWorkerRegistrationInServer { identifier });
         });
     }
@@ -200,7 +203,7 @@ void WebSWClientConnection::whenRegistrationReady(const SecurityOriginData& topO
 
 void WebSWClientConnection::setServiceWorkerClientIsControlled(ScriptExecutionContextIdentifier identifier, ServiceWorkerRegistrationData&& data, CompletionHandler<void(bool)>&& completionHandler)
 {
-    if (auto* loader = DocumentLoader::fromScriptExecutionContextIdentifier(identifier)) {
+    if (RefPtr loader = DocumentLoader::fromScriptExecutionContextIdentifier(identifier)) {
         completionHandler(loader->setControllingServiceWorkerRegistration(WTFMove(data)));
         return;
     }
@@ -318,7 +321,7 @@ void WebSWClientConnection::getNotifications(const URL& registrationURL, const S
     }
 #endif
 
-    WebProcess::singleton().parentProcessConnection()->sendWithAsyncReply(Messages::WebProcessProxy::GetNotifications { registrationURL, tag }, WTFMove(callback));
+    WebProcess::singleton().protectedParentProcessConnection()->sendWithAsyncReply(Messages::WebProcessProxy::GetNotifications { registrationURL, tag }, WTFMove(callback));
 }
 #endif
 
@@ -505,7 +508,7 @@ Ref<WebSWClientConnection::AddRoutePromise> WebSWClientConnection::addRoutes(Ser
             return makeUnexpected(WebCore::ExceptionData { WebCore::ExceptionCode::TypeError, "Internal error"_s });
         }
     };
-    return WebProcess::singleton().ensureNetworkProcessConnection().protectedConnection()->sendWithPromisedReply<PromiseConverter>(Messages::WebSWServerConnection::AddRoutes { identifier, routes });
+    return WebProcess::singleton().ensureNetworkProcessConnection().connection().sendWithPromisedReply<PromiseConverter>(Messages::WebSWServerConnection::AddRoutes { identifier, routes });
 }
 
 } // namespace WebKit

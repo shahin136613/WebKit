@@ -1442,8 +1442,10 @@ public:
                     
                     if (nonNegative && lessThanLength) {
                         executeNode(block->at(nodeIndex));
-                        if (UNLIKELY(Options::validateBoundsCheckElimination()) && node->op() == CheckInBounds)
-                            m_insertionSet.insertNode(nodeIndex, SpecNone, AssertInBounds, node->origin, node->child1(), node->child2());
+                        if (Options::validateBoundsCheckElimination()) [[unlikely]] {
+                            if (node->op() == CheckInBounds)
+                                m_insertionSet.insertNode(nodeIndex, SpecNone, AssertInBounds, node->origin, node->child1(), node->child2());
+                        }
                         // We just need to make sure we are a value-producing node.
                         node->convertToIdentityOn(node->child1().node());
                         changed = true;
@@ -1624,11 +1626,36 @@ private:
             break;
         }
 
+        case GetArrayLength: {
+            setRelationship(Relationship(node, m_zero, Relationship::GreaterThan, -1));
+            switch (node->arrayMode().type()) {
+            case Array::Undecided:
+            case Array::Int32:
+            case Array::Double:
+            case Array::Contiguous:
+                setRelationship(Relationship(node, m_zero, Relationship::LessThan, (MAX_STORAGE_VECTOR_LENGTH + 1)));
+                break;
+            default:
+                break;
+            }
+            break;
+        }
+
+        case GetVectorLength: {
+            setRelationship(Relationship(node, m_zero, Relationship::GreaterThan, -1));
+            setRelationship(Relationship(node, m_zero, Relationship::LessThan, (MAX_STORAGE_VECTOR_LENGTH + 1)));
+            break;
+        }
+
         case DataViewGetByteLength:
-        case GetArrayLength:
-        case GetVectorLength:
         case GetUndetachedTypeArrayLength: {
             setRelationship(Relationship(node, m_zero, Relationship::GreaterThan, -1));
+            break;
+        }
+
+        case StringCharCodeAt: {
+            setRelationship(Relationship::safeCreate(node->child2().node(), m_zero, Relationship::GreaterThan, -1));
+            setRelationship(Relationship::safeCreate(node->child2().node(), m_zero, Relationship::LessThan, StringImpl::MaxLength));
             break;
         }
 

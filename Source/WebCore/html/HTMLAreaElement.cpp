@@ -23,6 +23,7 @@
 #include "HTMLAreaElement.h"
 
 #include "AffineTransform.h"
+#include "ContainerNodeInlines.h"
 #include "ElementInlines.h"
 #include "HTMLImageElement.h"
 #include "HTMLMapElement.h"
@@ -189,7 +190,7 @@ RefPtr<HTMLImageElement> HTMLAreaElement::imageElement() const
     return nullptr;
 }
 
-bool HTMLAreaElement::isKeyboardFocusable(KeyboardEvent*) const
+bool HTMLAreaElement::isKeyboardFocusable(const FocusEventData&) const
 {
     return isFocusable();
 }

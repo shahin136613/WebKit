@@ -31,13 +31,13 @@
 #include "Animation.h"
 #include "DisplayList.h"
 #include "DisplayListRecorderImpl.h"
-#include "DisplayListReplayer.h"
 #include "FloatConversion.h"
 #include "FloatRect.h"
 #include "GraphicsLayerAsyncContentsDisplayDelegateCocoa.h"
 #include "GraphicsLayerContentsDisplayDelegate.h"
 #include "GraphicsLayerFactory.h"
 #include "HTMLVideoElement.h"
+#include "HostingContext.h"
 #include "Image.h"
 #include "Logging.h"
 #include "Model.h"
@@ -338,7 +338,7 @@ Ref<PlatformCALayer> GraphicsLayerCA::createPlatformCALayer(PlatformCALayer::Lay
     auto result = PlatformCALayerCocoa::create(layerType, owner);
 
     if (result->canHaveBackingStore()) {
-        auto contentsFormat = PlatformCALayer::contentsFormatForLayer(nullptr, owner);
+        auto contentsFormat = PlatformCALayer::contentsFormatForLayer(owner);
         result->setContentsFormat(contentsFormat);
     }
 
@@ -383,7 +383,7 @@ Ref<PlatformCAAnimation> GraphicsLayerCA::createPlatformCAAnimation(PlatformCAAn
     return PlatformCAAnimationCocoa::create(type, keyPath);
 }
 
-typedef UncheckedKeyHashMap<const GraphicsLayerCA*, std::pair<FloatRect, std::unique_ptr<DisplayList::DisplayList>>> LayerDisplayListHashMap;
+using LayerDisplayListHashMap = HashMap<const GraphicsLayerCA*, std::pair<FloatRect, Ref<const DisplayList::DisplayList>>>;
 
 static LayerDisplayListHashMap& layerDisplayListMap()
 {
@@ -437,7 +437,7 @@ void GraphicsLayerCA::initialize(Type layerType)
 
 GraphicsLayerCA::~GraphicsLayerCA()
 {
-    if (UNLIKELY(isTrackingDisplayListReplay()))
+    if (isTrackingDisplayListReplay()) [[unlikely]]
         layerDisplayListMap().remove(this);
 
     // We release our references to the PlatformCALayers here, but do not actively unparent them,
@@ -501,6 +501,11 @@ String GraphicsLayerCA::debugName() const
 std::optional<PlatformLayerIdentifier> GraphicsLayerCA::primaryLayerID() const
 {
     return primaryLayer()->layerID();
+}
+
+std::optional<PlatformLayerIdentifier> GraphicsLayerCA::layerIDIgnoringStructuralLayer() const
+{
+    return protectedLayer()->layerID();
 }
 
 PlatformLayer* GraphicsLayerCA::platformLayer() const
@@ -738,6 +743,23 @@ void GraphicsLayerCA::setDrawsHDRContent(bool drawsHDRContent)
 
     GraphicsLayer::setDrawsHDRContent(drawsHDRContent);
     noteLayerPropertyChanged(DrawsHDRContentChanged | DebugIndicatorsChanged);
+}
+
+void GraphicsLayerCA::setTonemappingEnabled(bool tonemappingEnabled)
+{
+    if (tonemappingEnabled == m_tonemappingEnabled)
+        return;
+
+    GraphicsLayer::setTonemappingEnabled(tonemappingEnabled);
+    noteLayerPropertyChanged(TonemappingEnabledChanged);
+}
+
+void GraphicsLayerCA::setNeedsDisplayIfEDRHeadroomExceeds(float headroom)
+{
+    if (protectedLayer()->setNeedsDisplayIfEDRHeadroomExceeds(headroom)) {
+        if (!!m_uncommittedChanges)
+            client().notifyFlushRequired(this);
+    }
 }
 #endif
 
@@ -1417,7 +1439,7 @@ void GraphicsLayerCA::setContentsToModelContext(Ref<ModelContext> modelContext, 
 void GraphicsLayerCA::setContentsToVideoElement(HTMLVideoElement& videoElement, ContentsLayerPurpose purpose)
 {
 #if HAVE(AVKIT)
-    if (auto hostingContextID = videoElement.layerHostingContextID()) {
+    if (auto hostingContextID = videoElement.layerHostingContext().contextID) {
         if (m_contentsLayer && !m_contentsDisplayDelegate
             && m_layerHostingContextID == hostingContextID
             && m_contentsLayerPurpose == purpose) {
@@ -1456,6 +1478,9 @@ void GraphicsLayerCA::setContentsDisplayDelegate(RefPtr<GraphicsLayerContentsDis
         // backing store settings accordingly.
         contentsLayer->setBackingStoreAttached(true);
         contentsLayer->setAcceleratesDrawing(true);
+#if HAVE(SUPPORT_HDR_DISPLAY)
+        contentsLayer->setTonemappingEnabled(true);
+#endif
         delegate->prepareToDelegateDisplay(contentsLayer);
     }
 
@@ -1530,8 +1555,7 @@ FloatPoint GraphicsLayerCA::computePositionRelativeToBase(float& pageScale) cons
 
 void GraphicsLayerCA::flushCompositingState(const FloatRect& visibleRect)
 {
-    TransformState state(TransformState::UnapplyInverseTransformDirection, FloatQuad(visibleRect));
-    state.setSecondaryQuad(FloatQuad { visibleRect });
+    TransformState state(TransformState::UnapplyInverseTransformDirection, FloatQuad(visibleRect), FloatQuad { visibleRect });
 
     CommitState commitState;
     commitState.ancestorHadChanges = visibleRect != m_previousCommittedVisibleRect;
@@ -1739,17 +1763,20 @@ GraphicsLayerCA::VisibleAndCoverageRects GraphicsLayerCA::computeVisibleAndCover
     bool mapWasClamped;
     auto clipRectFromParent = state.mappedQuad(&mapWasClamped).boundingBox();
 
-    auto clipRectForSelf = FloatRect { { }, m_size };
+    FloatRect clipRectForSelf { { }, m_size };
+    if (CheckedPtr backing = this->tiledBacking())
+        clipRectForSelf = backing->adjustedTileClipRectForObscuredInsets(clipRectForSelf);
+
     if (!applyWasClamped && !mapWasClamped)
         clipRectForSelf.intersect(clipRectFromParent);
 
     if (masksToBounds()) {
         ASSERT(accumulation == TransformState::FlattenTransform);
         // Flatten, and replace the quad in the TransformState with one that is clipped to this layer's bounds.
-        state.flatten();
-        state.setQuad(clipRectForSelf);
         if (state.isMappingSecondaryQuad())
-            state.setSecondaryQuad(FloatQuad { clipRectForSelf });
+            state.reset(clipRectForSelf, clipRectForSelf);
+        else
+            state.reset(clipRectForSelf);
     }
 
     auto boundsOrigin = m_boundsOrigin;
@@ -1885,7 +1912,7 @@ void GraphicsLayerCA::recursiveCommitChanges(CommitState& commitState, const Tra
     VisibleAndCoverageRects rects = computeVisibleAndCoverageRect(localState, accumulateTransform);
     if (adjustCoverageRect(rects, m_visibleRect)) {
         if (state.isMappingSecondaryQuad())
-            localState.setLastPlanarSecondaryQuad(FloatQuad { rects.coverageRect });
+            localState.setSecondaryQuadInMappedSpace(FloatQuad { rects.coverageRect });
     }
     setVisibleAndCoverageRects(rects);
 
@@ -1991,13 +2018,11 @@ void GraphicsLayerCA::recursiveCommitChanges(CommitState& commitState, const Tra
 
     if (usesDisplayListDrawing() && m_drawsContent && (!m_hasEverPainted || hadDirtyRects)) {
         TraceScope tracingScope(DisplayListRecordStart, DisplayListRecordEnd);
-
-        m_displayList = makeUnique<DisplayList::DisplayList>();
-        
+        m_displayList = nullptr;
         FloatRect initialClip(boundsOrigin(), size());
-
-        DisplayList::RecorderImpl context(*m_displayList, GraphicsContextState(), initialClip, AffineTransform());
+        DisplayList::RecorderImpl context(GraphicsContextState(), initialClip, AffineTransform());
         paintGraphicsLayerContents(context, FloatRect(FloatPoint(), size()));
+        m_displayList = context.takeDisplayList();
     }
 }
 
@@ -2020,14 +2045,13 @@ void GraphicsLayerCA::platformCALayerPaintContents(PlatformCALayer*, GraphicsCon
 {
     m_hasEverPainted = true;
     if (m_displayList) {
-        DisplayList::Replayer replayer(context, *m_displayList);
+        context.drawDisplayList(*m_displayList);
         
-        if (UNLIKELY(isTrackingDisplayListReplay())) {
-            auto replayList = replayer.replay(clip, isTrackingDisplayListReplay()).trackedDisplayList;
-            layerDisplayListMap().add(this, std::pair<FloatRect, std::unique_ptr<DisplayList::DisplayList>>(clip, WTFMove(replayList)));
-        } else
-            replayer.replay(clip);
-
+        if (isTrackingDisplayListReplay()) [[unlikely]] {
+            // Original purpose of the code was to track playback time optimizations. However, there are no such things, and as such we
+            // use the original.
+            layerDisplayListMap().add(this, std::make_pair(clip, Ref { *m_displayList }));
+        }
         return;
     }
 
@@ -2148,6 +2172,9 @@ void GraphicsLayerCA::commitLayerChangesBeforeSublayers(CommitState& commitState
 #if HAVE(SUPPORT_HDR_DISPLAY)
     if (m_uncommittedChanges & DrawsHDRContentChanged)
         updateDrawsHDRContent();
+
+    if (m_uncommittedChanges & TonemappingEnabledChanged)
+        updateTonemappingEnabled();
 #endif
 
     if (m_uncommittedChanges & NameChanged)
@@ -3029,7 +3056,7 @@ void GraphicsLayerCA::updateDebugIndicators()
     Color borderColor;
     float width = 0;
 
-    bool showDebugBorders = isShowingDebugBorder();
+    bool showDebugBorders = isShowingDebugBorder() || isShowingFrameProcessBorders();
     if (showDebugBorders)
         getDebugBorderInfo(borderColor, width);
 
@@ -3325,25 +3352,35 @@ void GraphicsLayerCA::updateReplicatedLayers()
 #if HAVE(SUPPORT_HDR_DISPLAY)
 void GraphicsLayerCA::updateDrawsHDRContent()
 {
-    auto contentsFormat = PlatformCALayer::contentsFormatForLayer(nullptr, this);
+    auto contentsFormat = PlatformCALayer::contentsFormatForLayer(this);
     protectedLayer()->setContentsFormat(contentsFormat);
 }
+
+void GraphicsLayerCA::updateTonemappingEnabled()
+{
+    protectedLayer()->setTonemappingEnabled(m_tonemappingEnabled);
+}
 #endif
+
+OptionSet<ContentsFormat> GraphicsLayerCA::screenContentsFormats() const
+{
+    return client().screenContentsFormats();
+}
 
 // For now, this assumes that layers only ever have one replica, so replicaIndices contains only 0 and 1.
 GraphicsLayerCA::CloneID GraphicsLayerCA::ReplicaState::cloneID() const
 {
     size_t depth = m_replicaBranches.size();
 
-    const size_t bitsPerUChar = sizeof(UChar) * 8;
+    const size_t bitsPerUChar = sizeof(char16_t) * 8;
     size_t vectorSize = (depth + bitsPerUChar - 1) / bitsPerUChar;
     
-    Vector<UChar> result(vectorSize, 0);
+    Vector<char16_t> result(vectorSize, 0);
 
     // Create a string from the bit sequence which we can use to identify the clone.
     // Note that the string may contain embedded nulls, but that's OK.
     for (size_t i = 0; i < depth; ++i) {
-        UChar& currChar = result[i / bitsPerUChar];
+        char16_t& currChar = result[i / bitsPerUChar];
         currChar = (currChar << 1) | m_replicaBranches[i];
     }
     
@@ -3877,12 +3914,13 @@ bool GraphicsLayerCA::createFilterAnimationsFromKeyframes(const KeyframeValueLis
         return false;
 
     const FilterOperations& operations = static_cast<const FilterAnimationValue&>(valueList.at(listIndex)).value();
-    // Make sure the platform layer didn't fallback to using software filter compositing instead.
-    if (!filtersCanBeComposited(operations))
-        return false;
 
     // FIXME: We can't currently hardware animate shadows.
-    if (operations.hasFilterOfType<FilterOperation::Type::DropShadow>())
+    if (operations.hasFilterOfType<FilterOperation::Type::DropShadowWithStyleColor>())
+        return false;
+
+    // Make sure the platform layer didn't fallback to using software filter compositing instead.
+    if (!filtersCanBeComposited(operations))
         return false;
 
     removeAnimation(animationName, valueList.property());
@@ -4385,6 +4423,15 @@ void GraphicsLayerCA::setShowRepaintCounter(bool showCounter)
     noteLayerPropertyChanged(DebugIndicatorsChanged);
 }
 
+void GraphicsLayerCA::setShowFrameProcessBorders(bool showBorders)
+{
+    if (showBorders == m_showFrameProcessBorders)
+        return;
+
+    GraphicsLayer::setShowFrameProcessBorders(showBorders);
+    noteLayerPropertyChanged(DebugIndicatorsChanged);
+}
+
 String GraphicsLayerCA::displayListAsText(OptionSet<DisplayList::AsTextFlag> flags) const
 {
     if (!m_displayList)
@@ -4647,6 +4694,7 @@ ASCIILiteral GraphicsLayerCA::layerChangeAsString(LayerChange layerChange)
 #endif
 #if HAVE(SUPPORT_HDR_DISPLAY)
     case LayerChange::DrawsHDRContentChanged: return "DrawsHDRContentChanged"_s;
+    case LayerChange::TonemappingEnabledChanged: return "TonemappingEnabledChanged"_s;
 #endif
     }
     ASSERT_NOT_REACHED();
@@ -5237,6 +5285,8 @@ Vector<std::pair<String, double>> GraphicsLayerCA::acceleratedAnimationsForTesti
 
         return animations;
     }
+#else
+    UNUSED_PARAM(settings);
 #endif
 
     for (auto& animation : m_animations) {

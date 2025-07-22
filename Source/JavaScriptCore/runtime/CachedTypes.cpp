@@ -214,7 +214,7 @@ private:
 
         bool malloc(size_t size, ptrdiff_t& result)
         {
-            size_t alignment = std::min(alignof(std::max_align_t), static_cast<size_t>(WTF::roundUpToPowerOfTwo(size)));
+            size_t alignment = std::min(alignof(std::max_align_t), static_cast<size_t>(roundUpToPowerOfTwo(size)));
             ptrdiff_t offset = roundUpToMultipleOf(alignment, m_offset);
             size = roundUpToMultipleOf(alignment, size);
             if (static_cast<size_t>(offset + size) > capacity())
@@ -230,8 +230,8 @@ private:
         uint8_t* buffer() { return m_buffer.mutableSpan().data(); }
         size_t size() const { return static_cast<size_t>(m_offset); }
 
-        std::span<uint8_t> mutableSpan() { return m_buffer.mutableSpan().first(size()); }
-        std::span<const uint8_t> span() const { return m_buffer.span().first(size()); }
+        std::span<uint8_t> mutableSpan() LIFETIME_BOUND { return m_buffer.mutableSpan().first(size()); }
+        std::span<const uint8_t> span() const LIFETIME_BOUND { return m_buffer.span().first(size()); }
 
         bool getOffset(const void* address, ptrdiff_t& result) const
         {
@@ -784,7 +784,7 @@ public:
     }
 
     std::span<const LChar> span8() const { return { this->template buffer<LChar>(), m_length }; }
-    std::span<const UChar> span16() const { return { this->template buffer<UChar>(), m_length }; }
+    std::span<const char16_t> span16() const { return { this->template buffer<char16_t>(), m_length }; }
 
 private:
     bool m_is8Bit : 1;
@@ -940,7 +940,7 @@ public:
             return;
         size_t sizeInBytes = BitVector::byteCount(m_numBits);
         uint8_t* buffer = this->allocate(encoder, sizeInBytes);
-        memcpy(buffer, bitVector.bits(), sizeInBytes);
+        memcpy(buffer, bitVector.words().data(), sizeInBytes);
     }
 
     void decode(Decoder&, BitVector& bitVector) const
@@ -949,7 +949,7 @@ public:
             return;
         bitVector.ensureSize(m_numBits);
         size_t sizeInBytes = BitVector::byteCount(m_numBits);
-        memcpy(bitVector.bits(), this->buffer(), sizeInBytes);
+        memcpy(bitVector.words().data(), this->buffer(), sizeInBytes);
     }
 
 private:
@@ -1032,7 +1032,7 @@ public:
         m_storage.encode(encoder, info.payload(), info.payloadSize());
     }
 
-    MallocPtr<ExpressionInfo> decode(Decoder& decoder) const
+    std::unique_ptr<ExpressionInfo> decode(Decoder& decoder) const
     {
         auto info = ExpressionInfo::createUninitialized(m_numberOfChapters, m_numberOfEncodedInfo, m_numberOfEncodedInfoExtensions);
         m_storage.decode(decoder, info->payload(), info->payloadSize());
@@ -2167,7 +2167,7 @@ ALWAYS_INLINE UnlinkedFunctionCodeBlock::UnlinkedFunctionCodeBlock(Decoder& deco
 template<typename T>
 struct CachedCodeBlockTypeImpl;
 
-enum CachedCodeBlockTag {
+enum class CachedCodeBlockTag {
     CachedProgramCodeBlockTag,
     CachedModuleCodeBlockTag,
     CachedEvalCodeBlockTag,
@@ -2177,11 +2177,11 @@ static CachedCodeBlockTag tagFromSourceCodeType(SourceCodeType type)
 {
     switch (type) {
     case SourceCodeType::ProgramType:
-        return CachedProgramCodeBlockTag;
+        return CachedCodeBlockTag::CachedProgramCodeBlockTag;
     case SourceCodeType::EvalType:
-        return CachedEvalCodeBlockTag;
+        return CachedCodeBlockTag::CachedEvalCodeBlockTag;
     case SourceCodeType::ModuleType:
-        return CachedModuleCodeBlockTag;
+        return CachedCodeBlockTag::CachedModuleCodeBlockTag;
     case SourceCodeType::FunctionType:
         break;
     }
@@ -2192,19 +2192,19 @@ static CachedCodeBlockTag tagFromSourceCodeType(SourceCodeType type)
 template<>
 struct CachedCodeBlockTypeImpl<UnlinkedProgramCodeBlock> {
     using type = CachedProgramCodeBlock;
-    static constexpr CachedCodeBlockTag tag = CachedProgramCodeBlockTag;
+    static constexpr CachedCodeBlockTag tag = CachedCodeBlockTag::CachedProgramCodeBlockTag;
 };
 
 template<>
 struct CachedCodeBlockTypeImpl<UnlinkedModuleProgramCodeBlock> {
     using type = CachedModuleCodeBlock;
-    static constexpr CachedCodeBlockTag tag = CachedModuleCodeBlockTag;
+    static constexpr CachedCodeBlockTag tag = CachedCodeBlockTag::CachedModuleCodeBlockTag;
 };
 
 template<>
 struct CachedCodeBlockTypeImpl<UnlinkedEvalCodeBlock> {
     using type = CachedEvalCodeBlock;
-    static constexpr CachedCodeBlockTag tag = CachedEvalCodeBlockTag;
+    static constexpr CachedCodeBlockTag tag = CachedCodeBlockTag::CachedEvalCodeBlockTag;
 };
 
 template<typename T>
@@ -2559,11 +2559,11 @@ bool GenericCacheEntry::decode(Decoder& decoder, std::pair<SourceCodeKey, Unlink
         return false;
 
     switch (m_tag) {
-    case CachedProgramCodeBlockTag:
+    case CachedCodeBlockTag::CachedProgramCodeBlockTag:
         return std::bit_cast<const CacheEntry<UnlinkedProgramCodeBlock>*>(this)->decode(decoder, reinterpret_cast<std::pair<SourceCodeKey, UnlinkedProgramCodeBlock*>&>(result));
-    case CachedModuleCodeBlockTag:
+    case CachedCodeBlockTag::CachedModuleCodeBlockTag:
         return std::bit_cast<const CacheEntry<UnlinkedModuleProgramCodeBlock>*>(this)->decode(decoder, reinterpret_cast<std::pair<SourceCodeKey, UnlinkedModuleProgramCodeBlock*>&>(result));
-    case CachedEvalCodeBlockTag:
+    case CachedCodeBlockTag::CachedEvalCodeBlockTag:
         // We do not cache eval code blocks
         RELEASE_ASSERT_NOT_REACHED();
     }
@@ -2577,11 +2577,11 @@ bool GenericCacheEntry::isStillValid(Decoder& decoder, const SourceCodeKey& key,
         return false;
 
     switch (tag) {
-    case CachedProgramCodeBlockTag:
+    case CachedCodeBlockTag::CachedProgramCodeBlockTag:
         return std::bit_cast<const CacheEntry<UnlinkedProgramCodeBlock>*>(this)->isStillValid(decoder, key);
-    case CachedModuleCodeBlockTag:
+    case CachedCodeBlockTag::CachedModuleCodeBlockTag:
         return std::bit_cast<const CacheEntry<UnlinkedModuleProgramCodeBlock>*>(this)->isStillValid(decoder, key);
-    case CachedEvalCodeBlockTag:
+    case CachedCodeBlockTag::CachedEvalCodeBlockTag:
         // We do not cache eval code blocks
         RELEASE_ASSERT_NOT_REACHED();
     }

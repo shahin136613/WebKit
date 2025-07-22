@@ -387,8 +387,6 @@ void InjectedBundle::beginTesting(WKDictionaryRef settings, BegingTestingMode te
 
 void InjectedBundle::done(bool forceRepaint)
 {
-    m_useWorkQueue = false;
-
     setTopLoadingFrame(0);
 
     m_accessibilityController->resetToConsistentState();
@@ -413,7 +411,6 @@ void InjectedBundle::clearResourceLoadStatistics()
 
 void InjectedBundle::reloadFromOrigin()
 {
-    m_useWorkQueue = true;
     postPageMessage("ReloadFromOrigin");
 }
 
@@ -537,31 +534,21 @@ void InjectedBundle::resetUserMediaPermission()
     postPageMessage("ResetUserMediaPermission");
 }
 
-void InjectedBundle::setUserMediaPersistentPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin)
+void InjectedBundle::delayUserMediaRequestDecision()
 {
-    auto body = adoptWK(WKMutableDictionaryCreate());
-    setValue(body, "permission", permission);
-    setValue(body, "origin", origin);
-    setValue(body, "parentOrigin", parentOrigin);
-    postPageMessage("SetUserMediaPersistentPermissionForOrigin", body);
+    postPageMessage("DelayUserMediaRequestDecision");
 }
 
-unsigned InjectedBundle::userMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin) const
+unsigned InjectedBundle::userMediaPermissionRequestCount() const
 {
-    auto body = adoptWK(WKMutableDictionaryCreate());
-    setValue(body, "origin", origin);
-    setValue(body, "parentOrigin", parentOrigin);
     WKTypeRef result = nullptr;
-    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("UserMediaPermissionRequestCountForOrigin").get(), body.get(), &result);
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("UserMediaPermissionRequestCount").get(), 0, &result);
     return uint64Value(adoptWK(result).get());
 }
 
-void InjectedBundle::resetUserMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin)
+void InjectedBundle::resetUserMediaPermissionRequestCount()
 {
-    auto body = adoptWK(WKMutableDictionaryCreate());
-    setValue(body, "origin", origin);
-    setValue(body, "parentOrigin", parentOrigin);
-    postPageMessage("ResetUserMediaPermissionRequestCountForOrigin", body);
+    postPageMessage("ResetUserMediaPermissionRequestCount");
 }
 
 void InjectedBundle::setCustomPolicyDelegate(bool enabled, bool permissive)
@@ -586,19 +573,15 @@ void InjectedBundle::setCacheModel(int model)
 
 bool InjectedBundle::shouldProcessWorkQueue() const
 {
-    if (!m_useWorkQueue)
-        return false;
-
     WKTypeRef result = nullptr;
-    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("IsWorkQueueEmpty").get(), 0, &result);
+    WKBundlePagePostSynchronousMessageForTesting(page()->page(), toWK("ShouldProcessWorkQueue").get(), 0, &result);
 
     // The IPC failed. This happens when swapping processes on navigation because the WebPageProxy unregisters itself
     // as a MessageReceiver from the old WebProcessProxy and register itself with the new WebProcessProxy instead.
     if (!result)
         return false;
 
-    auto isEmpty = booleanValue(adoptWK(result).get());
-    return !isEmpty;
+    return booleanValue(adoptWK(result).get());
 }
 
 void InjectedBundle::processWorkQueue()
@@ -608,19 +591,16 @@ void InjectedBundle::processWorkQueue()
 
 void InjectedBundle::queueBackNavigation(unsigned howFarBackward)
 {
-    m_useWorkQueue = true;
     postPageMessage("QueueBackNavigation", adoptWK(WKUInt64Create(howFarBackward)));
 }
 
 void InjectedBundle::queueForwardNavigation(unsigned howFarForward)
 {
-    m_useWorkQueue = true;
     postPageMessage("QueueForwardNavigation", adoptWK(WKUInt64Create(howFarForward)));
 }
 
 void InjectedBundle::queueLoad(WKStringRef url, WKStringRef target, bool shouldOpenExternalURLs)
 {
-    m_useWorkQueue = true;
     auto body = adoptWK(WKMutableDictionaryCreate());
     setValue(body, "url", url);
     setValue(body, "target", target);
@@ -630,7 +610,6 @@ void InjectedBundle::queueLoad(WKStringRef url, WKStringRef target, bool shouldO
 
 void InjectedBundle::queueLoadHTMLString(WKStringRef content, WKStringRef baseURL, WKStringRef unreachableURL)
 {
-    m_useWorkQueue = true;
     auto body = adoptWK(WKMutableDictionaryCreate());
     setValue(body, "content", content);
     if (baseURL)
@@ -642,19 +621,16 @@ void InjectedBundle::queueLoadHTMLString(WKStringRef content, WKStringRef baseUR
 
 void InjectedBundle::queueReload()
 {
-    m_useWorkQueue = true;
     postPageMessage("QueueReload");
 }
 
 void InjectedBundle::queueLoadingScript(WKStringRef script)
 {
-    m_useWorkQueue = true;
     postPageMessage("QueueLoadingScript", script);
 }
 
 void InjectedBundle::queueNonLoadingScript(WKStringRef script)
 {
-    m_useWorkQueue = true;
     postPageMessage("QueueNonLoadingScript", script);
 }
 
@@ -774,6 +750,11 @@ void postPageMessage(const char* name)
 void postPageMessage(const char* name, bool value)
 {
     postPageMessage(name, adoptWK(WKBooleanCreate(value)));
+}
+
+void postPageMessage(const char* name, unsigned value)
+{
+    postPageMessage(name, adoptWK(WKUInt64Create(value)));
 }
 
 void postPageMessage(const char* name, const char* value)

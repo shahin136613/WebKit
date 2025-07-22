@@ -82,7 +82,7 @@ public:
     struct Entry {
         JSValue value;
         WTF::Range<unsigned> range;
-        std::variant<std::monostate, Object, Array> properties;
+        Variant<std::monostate, Object, Array> properties;
     };
 
     JSONRanges() = default;
@@ -118,12 +118,12 @@ template<typename CharacterType> struct LiteralParserToken {
         double numberToken; // Only used for TokNumber.
         const CharacterType* identifierStart;
         const LChar* stringStart8;
-        const UChar* stringStart16;
+        const char16_t* stringStart16;
     };
 
     std::span<const CharacterType> identifier() const { return { identifierStart, stringOrIdentifierLength }; }
     std::span<const LChar> string8() const { return { stringStart8, stringOrIdentifierLength }; }
-    std::span<const UChar> string16() const { return { stringStart16, stringOrIdentifierLength }; }
+    std::span<const char16_t> string16() const { return { stringStart16, stringOrIdentifierLength }; }
 };
 
 template <typename CharType>
@@ -291,8 +291,10 @@ private:
 
     JSValue parsePrimitiveValue(VM&);
 
-    ALWAYS_INLINE Identifier makeIdentifier(VM&, typename Lexer::LiteralParserTokenPtr);
-    ALWAYS_INLINE JSString* makeJSString(VM&, typename Lexer::LiteralParserTokenPtr);
+    static ALWAYS_INLINE bool equalIdentifier(UniquedStringImpl*, typename Lexer::LiteralParserTokenPtr);
+    static ALWAYS_INLINE AtomStringImpl* existingIdentifier(VM&, typename Lexer::LiteralParserTokenPtr);
+    static ALWAYS_INLINE Identifier makeIdentifier(VM&, typename Lexer::LiteralParserTokenPtr);
+    static ALWAYS_INLINE JSString* makeJSString(VM&, typename Lexer::LiteralParserTokenPtr);
 
     void setErrorMessageForToken(TokenType);
 

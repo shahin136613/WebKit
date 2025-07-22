@@ -98,7 +98,7 @@ static bool containsElement(const Vector<WeakStyleable>& timelineScopeElements, 
 
 ScrollTimeline* StyleOriginatedTimelinesController::determineTreeOrder(const Vector<Ref<ScrollTimeline>>& ancestorTimelines, const Styleable& styleable, const Vector<WeakStyleable>& timelineScopeElements)
 {
-    RefPtr element = &styleable.element;
+    RefPtr element = styleable.element;
     while (element) {
         Vector<Ref<ScrollTimeline>> matchedTimelines;
         for (auto& timeline : ancestorTimelines) {
@@ -177,7 +177,7 @@ void StyleOriginatedTimelinesController::updateTimelineForTimelineScope(const Re
                 matchedTimelineScopeElements.appendIfNotContains(*entryElement);
         }
     }
-    RefPtr element = &timelineElement->element;
+    RefPtr element = timelineElement->element;
     while (element) {
         auto it = matchedTimelineScopeElements.findIf([element] (const Styleable& entry) {
             return &entry.element == element;
@@ -263,7 +263,7 @@ void StyleOriginatedTimelinesController::documentDidResolveStyle()
     m_removedTimelines.clear();
 }
 
-void StyleOriginatedTimelinesController::registerNamedViewTimeline(const AtomString& name, const Styleable& subject, ScrollAxis axis, ViewTimelineInsets&& insets)
+void StyleOriginatedTimelinesController::registerNamedViewTimeline(const AtomString& name, const Styleable& subject, ScrollAxis axis, const ViewTimelineInsetItem& insets)
 {
     LOG_WITH_STREAM(Animations, stream << "StyleOriginatedTimelinesController::registerNamedViewTimeline: " << name << " subject: " << subject);
 
@@ -280,9 +280,9 @@ void StyleOriginatedTimelinesController::registerNamedViewTimeline(const AtomStr
     if (hasExistingTimeline) {
         Ref existingViewTimeline = downcast<ViewTimeline>(timelines[existingTimelineIndex].get());
         existingViewTimeline->setAxis(axis);
-        existingViewTimeline->setInsets(WTFMove(insets));
+        existingViewTimeline->setInsets(insets);
     } else {
-        auto newViewTimeline = ViewTimeline::create(name, axis, WTFMove(insets));
+        auto newViewTimeline = ViewTimeline::create(name, axis, insets);
         newViewTimeline->setSubject(subject);
         updateTimelineForTimelineScope(newViewTimeline, name);
         timelines.append(WTFMove(newViewTimeline));
@@ -314,7 +314,7 @@ void StyleOriginatedTimelinesController::unregisterNamedTimeline(const AtomStrin
     // Make sure to remove the named timeline from our name-to-timelines map first,
     // such that re-syncing any CSS Animation previously registered with it resolves
     // their `animation-timeline` properly.
-    timelines.remove(i);
+    timelines.removeAt(i);
 
     for (Ref animation : timeline->relevantAnimations()) {
         if (RefPtr cssAnimation = dynamicDowncast<CSSAnimation>(animation)) {
@@ -478,7 +478,7 @@ void StyleOriginatedTimelinesController::unregisterNamedTimelinesAssociatedWithE
 {
     LOG_WITH_STREAM(Animations, stream << "StyleOriginatedTimelinesController::unregisterNamedTimelinesAssociatedWithElement element: " << styleable);
 
-    UncheckedKeyHashSet<AtomString> namesToClear;
+    HashSet<AtomString> namesToClear;
 
     for (auto& entry : m_nameToTimelineMap) {
         auto& timelines = entry.value;
@@ -486,8 +486,7 @@ void StyleOriginatedTimelinesController::unregisterNamedTimelinesAssociatedWithE
             auto& timeline = timelines[i];
             if (originatingElement(timeline) == styleable) {
                 m_removedTimelines.add(timeline.get());
-                timelines.remove(i);
-                i--;
+                timelines.removeAt(i--);
             }
         }
         if (timelines.isEmpty())

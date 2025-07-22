@@ -22,7 +22,6 @@
 
 #include "CSSProperty.h"
 #include "CSSPropertyNames.h"
-#include "ExceptionOr.h"
 #include "ScriptWrappable.h"
 #include <wtf/AbstractRefCountedAndCanMakeWeakPtr.h>
 #include <wtf/CheckedRef.h>
@@ -37,9 +36,13 @@ class MutableStyleProperties;
 class StyleProperties;
 class StyledElement;
 
+template<typename> class ExceptionOr;
+
 enum class StyleDeclarationType : uint8_t {
     Style,
     FontFace,
+    Page,
+    PositionTry
 };
 
 class CSSStyleDeclaration : public ScriptWrappable, public AbstractRefCountedAndCanMakeSingleThreadWeakPtr<CSSStyleDeclaration> {

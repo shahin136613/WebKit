@@ -1,5 +1,5 @@
 /*
- * Portions Copyright (c) 2011 Motorola Mobility, Inc.  All rights reserved.
+ * Portions Copyright (c) 2011 Motorola Mobility, Inc. All rights reserved.
  * Copyright (C) 2014 Collabora Ltd.
  * Copyright (C) 2011, 2017, 2020 Igalia S.L.
  *
@@ -107,6 +107,7 @@
 #endif
 
 #if PLATFORM(WPE)
+#include "WPEUtilities.h"
 #include "WPEWebViewLegacy.h"
 #include "WPEWebViewPlatform.h"
 #include "WebKitOptionMenuPrivate.h"
@@ -115,6 +116,7 @@
 #if ENABLE(WPE_PLATFORM)
 #include "WebKitInputMethodContextImplWPE.h"
 #endif
+#include "WebKitColor.h"
 #endif
 
 #if ENABLE(2022_GLIB_API)
@@ -243,6 +245,8 @@ enum {
     PROP_WEB_EXTENSION_MODE,
     PROP_DEFAULT_CONTENT_SECURITY_POLICY,
 
+    PROP_THEME_COLOR,
+
     N_PROPERTIES,
 };
 
@@ -312,7 +316,7 @@ private:
 #if PLATFORM(WPE)
 static unsigned frameDisplayCallbackID;
 struct FrameDisplayedCallback {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(FrameDisplayedCallback);
     FrameDisplayedCallback(WebKitFrameDisplayedCallback callback, gpointer userData = nullptr, GDestroyNotify destroyNotifyFunction = nullptr)
         : id(++frameDisplayCallbackID)
         , callback(callback)
@@ -339,7 +343,7 @@ struct FrameDisplayedCallback {
 #endif // PLATFORM(WPE)
 
 struct _WebKitWebViewPrivate {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(_WebKitWebViewPrivate);
     ~_WebKitWebViewPrivate()
     {
         // For modal dialogs, make sure the main loop is stopped when finalizing the webView.
@@ -554,6 +558,11 @@ void WebKitWebViewClient::didReceiveUserMessage(WKWPE::View&, UserMessage&& mess
 WebKitWebResourceLoadManager* WebKitWebViewClient::webResourceLoadManager()
 {
     return webkitWebViewGetWebResourceLoadManager(m_webView);
+}
+
+void WebKitWebViewClient::themeColorDidChange()
+{
+    webkitWebViewEmitThemeColorChanged(m_webView);
 }
 
 #if ENABLE(FULLSCREEN_API)
@@ -904,7 +913,7 @@ static void webkitWebViewConstructed(GObject* object)
         if (priv->display) {
             g_critical("WebKitWebView backend can't be set when display is set too, passed backend is ignored.");
             priv->backend = nullptr;
-        } else if (g_type_class_peek(WPE_TYPE_DISPLAY)) {
+        } else if (WKWPE::isUsingWPEPlatformAPI()) {
             g_critical("WebKitWebView backend can't be set when WPE platform API is already in use, passed backend is ignored.");
             priv->backend = nullptr;
             priv->display = wpe_display_get_default();
@@ -1176,6 +1185,18 @@ static void webkitWebViewGetProperty(GObject* object, guint propId, GValue* valu
     case PROP_DEFAULT_CONTENT_SECURITY_POLICY:
         g_value_set_string(value, webkit_web_view_get_default_content_security_policy(webView));
         break;
+    case PROP_THEME_COLOR: {
+#if PLATFORM(GTK)
+        GdkRGBA color;
+        webkit_web_view_get_theme_color(webView, &color);
+        g_value_set_boxed(value, static_cast<gconstpointer>(&color));
+#else
+        auto* color = static_cast<WebKitColor*>(fastMalloc(sizeof(WebKitColor)));
+        webkit_web_view_get_theme_color(webView, color);
+        g_value_take_boxed(value, static_cast<gconstpointer>(color));
+#endif
+        break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propId, paramSpec);
     }
@@ -1708,6 +1729,23 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
         nullptr, nullptr,
         nullptr,
         static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
+
+    /**
+     * WebKitWebView:theme-color:
+     *
+     * The theme color of the WebView's current page.
+     *
+     * Since: 2.50
+     */
+    sObjProperties[PROP_THEME_COLOR] = g_param_spec_boxed(
+        "theme-color",
+        nullptr, nullptr,
+#if PLATFORM(WPE)
+        WEBKIT_TYPE_COLOR,
+#else
+        GDK_TYPE_RGBA,
+#endif
+        WEBKIT_PARAM_READABLE);
 
     g_object_class_install_properties(gObjectClass, N_PROPERTIES, sObjProperties.data());
 
@@ -2716,6 +2754,11 @@ void webkitWebViewRunAsModal(WebKitWebView* webView)
 #endif
 }
 
+void webkitWebViewEmitThemeColorChanged(WebKitWebView* webView)
+{
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_THEME_COLOR]);
+}
+
 void webkitWebViewClosePage(WebKitWebView* webView)
 {
     g_signal_emit(webView, signals[CLOSE], 0, NULL);
@@ -3053,20 +3096,21 @@ void webkitWebViewDidReceiveUserMessage(WebKitWebView* webView, UserMessage&& me
 }
 
 #if ENABLE(POINTER_LOCK)
-void webkitWebViewRequestPointerLock(WebKitWebView* webView)
+void webkitWebViewRequestPointerLock(WebKitWebView* webView, CompletionHandler<void(bool)>&& completionHandler)
 {
 #if PLATFORM(GTK)
-    webkitWebViewBaseRequestPointerLock(WEBKIT_WEB_VIEW_BASE(webView));
+    webkitWebViewBaseRequestPointerLock(WEBKIT_WEB_VIEW_BASE(webView), WTFMove(completionHandler));
 #endif
 
 #if PLATFORM(WPE)
     webView->priv->view->requestPointerLock();
+    completionHandler(true);
 #endif
 }
 
-void webkitWebViewDenyPointerLockRequest(WebKitWebView* webView)
+void webkitWebViewDenyPointerLockRequest(CompletionHandler<void(bool)>&& completionHandler)
 {
-    getPage(webView).didDenyPointerLock();
+    completionHandler(false);
 }
 
 void webkitWebViewDidLosePointerLock(WebKitWebView* webView)
@@ -4187,15 +4231,15 @@ static void webkitWebViewRunJavaScriptWithParams(WebKitWebView* webView, WebKit:
         if (result) {
 #if ENABLE(2022_GLIB_API)
             ASSERT_UNUSED(returnType, returnType == RunJavascriptReturnType::JSCValue);
-            g_task_return_pointer(task.get(), API::SerializedScriptValue::deserialize(result->legacySerializedScriptValue()->internalRepresentation()).leakRef(),
+            g_task_return_pointer(task.get(), result->toJSC().leakRef(),
                 reinterpret_cast<GDestroyNotify>(g_object_unref));
 #else
             if (returnType == RunJavascriptReturnType::JSCValue) {
-                g_task_return_pointer(task.get(), API::SerializedScriptValue::deserialize(result->legacySerializedScriptValue()->internalRepresentation()).leakRef(),
+                g_task_return_pointer(task.get(), result->toJSC().leakRef(),
                     reinterpret_cast<GDestroyNotify>(g_object_unref));
             } else {
                 ASSERT(returnType == RunJavascriptReturnType::WebKitJavascriptResult);
-                g_task_return_pointer(task.get(), webkitJavascriptResultCreate(result->legacySerializedScriptValue()->internalRepresentation()),
+                g_task_return_pointer(task.get(), webkitJavascriptResultCreate(WTFMove(*result)),
                     reinterpret_cast<GDestroyNotify>(webkit_javascript_result_unref));
             }
 #endif
@@ -4352,13 +4396,12 @@ JSCValue* webkit_web_view_evaluate_javascript_finish(WebKitWebView* webView, GAs
     return static_cast<JSCValue*>(g_task_propagate_pointer(G_TASK(result), error));
 }
 
-static std::pair<Vector<Vector<uint8_t>>, Vector<std::pair<String, JavaScriptEvaluationResult>>> parseAsyncFunctionArguments(GVariant* arguments, GError** error)
+static Vector<std::pair<String, JavaScriptEvaluationResult>> parseAsyncFunctionArguments(GVariant* arguments, GError** error)
 {
-    Vector<std::pair<String, JavaScriptEvaluationResult>> argumentsVector;
-    Vector<Vector<uint8_t>> wireBytes;
-
     if (!arguments)
-        return { WTFMove(wireBytes), WTFMove(argumentsVector) };
+        return { };
+
+    Vector<std::pair<String, JavaScriptEvaluationResult>> argumentsVector;
 
     GVariantIter iter;
     g_variant_iter_init(&iter, arguments);
@@ -4368,16 +4411,15 @@ static std::pair<Vector<Vector<uint8_t>>, Vector<std::pair<String, JavaScriptEva
         if (!key)
             continue;
 
-        auto serializedValue = API::SerializedScriptValue::createFromGVariant(value);
-        if (!serializedValue) {
+        auto parameter = JavaScriptEvaluationResult::extract(value);
+        if (!parameter) {
             *error = g_error_new(WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_INVALID_PARAMETER, "Invalid parameter %s passed as argument of async function call", key);
-            return { WTFMove(wireBytes), WTFMove(argumentsVector) };
+            return argumentsVector;
         }
-        wireBytes.append(serializedValue->internalRepresentation().wireBytes());
-        argumentsVector.append({ String::fromUTF8(key), JavaScriptEvaluationResult { wireBytes.last().span() } });
+        argumentsVector.append({ String::fromUTF8(key), WTFMove(*parameter) });
     }
 
-    return { WTFMove(wireBytes), WTFMove(argumentsVector) };
+    return argumentsVector;
 }
 
 static void webkitWebViewCallAsyncJavascriptFunctionInternal(WebKitWebView* webView, const char* body, gssize length, GVariant* arguments, const char* worldName, const char* sourceURI, RunJavascriptReturnType returnType, GCancellable* cancellable, GAsyncReadyCallback callback, gpointer userData)
@@ -4387,7 +4429,7 @@ static void webkitWebViewCallAsyncJavascriptFunctionInternal(WebKitWebView* webV
     g_return_if_fail(!arguments || g_variant_is_of_type(arguments, G_VARIANT_TYPE("a{sv}")));
 
     GError* error = nullptr;
-    auto [wireBytes, argumentsVector] = parseAsyncFunctionArguments(arguments, &error);
+    auto argumentsVector = parseAsyncFunctionArguments(arguments, &error);
     if (error) {
         g_task_report_error(webView, callback, userData, nullptr, error);
         return;
@@ -4793,7 +4835,7 @@ gboolean webkit_web_view_can_show_mime_type(WebKitWebView* webView, const char* 
 
 #if ENABLE(MHTML)
 struct ViewSaveAsyncData {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(ViewSaveAsyncData);
     RefPtr<API::Data> webData;
     GRefPtr<GFile> file;
 };
@@ -5096,7 +5138,7 @@ void webkit_web_view_get_snapshot(WebKitWebView* webView, WebKitSnapshotRegion r
         snapshotOptions.add(SnapshotOption::TransparentBackground);
 
     GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
-    getPage(webView).takeSnapshot({ }, { }, snapshotOptions, [task = WTFMove(task)](std::optional<ShareableBitmap::Handle>&& handle) {
+    getPage(webView).takeSnapshotLegacy({ }, { }, snapshotOptions, [task = WTFMove(task)](std::optional<ShareableBitmap::Handle>&& handle) {
         if (handle) {
             if (auto bitmap = ShareableBitmap::create(WTFMove(*handle), SharedMemory::Protection::ReadOnly)) {
 #if USE(GTK4)

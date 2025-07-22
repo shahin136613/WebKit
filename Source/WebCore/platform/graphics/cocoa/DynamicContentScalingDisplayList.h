@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2022-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -46,11 +46,11 @@ public:
     DynamicContentScalingDisplayList(DynamicContentScalingDisplayList&&) = default;
     DynamicContentScalingDisplayList& operator=(DynamicContentScalingDisplayList&&) = default;
 
-    Ref<WebCore::SharedBuffer> displayList() const { return m_displayList; }
+    WebCore::SharedBuffer& displayList() const { return m_displayList; }
     Vector<MachSendRight> takeSurfaces() { return std::exchange(m_surfaces, { }); }
 
 private:
-    Ref<WebCore::SharedBuffer> m_displayList;
+    const Ref<WebCore::SharedBuffer> m_displayList;
     Vector<MachSendRight> m_surfaces;
 };
 

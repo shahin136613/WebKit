@@ -45,7 +45,6 @@
 #include "StyleProperties.h"
 #include "StyleSheetContents.h"
 #include "StyledElement.h"
-#include <variant>
 #include <wtf/StdLibExtras.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/ParsingUtilities.h>
@@ -94,7 +93,7 @@ static PropertyNamePrefix propertyNamePrefix(const StringImpl& propertyName)
     ASSERT(propertyName.length());
 
     // First character of the prefix within the property name may be upper or lowercase.
-    UChar firstChar = toASCIILower(propertyName[0]);
+    char16_t firstChar = toASCIILower(propertyName[0]);
     switch (firstChar) {
     case 'e':
         if (matchesCSSPropertyNamePrefix(propertyName, "epub"_s))
@@ -122,7 +121,7 @@ static inline void writeEpubPrefix(std::span<char>& buffer)
 
 static CSSPropertyID parseJavaScriptCSSPropertyName(const AtomString& propertyName)
 {
-    using CSSPropertyIDMap = UncheckedKeyHashMap<AtomString, CSSPropertyID>;
+    using CSSPropertyIDMap = HashMap<AtomString, CSSPropertyID>;
     static NeverDestroyed<CSSPropertyIDMap> propertyIDCache;
 
     auto* propertyNameString = propertyName.impl();
@@ -166,7 +165,7 @@ static CSSPropertyID parseJavaScriptCSSPropertyName(const AtomString& propertyNa
         return CSSPropertyInvalid;
 
     for (; i < length; ++i) {
-        UChar c = (*propertyNameString)[i];
+        char16_t c = (*propertyNameString)[i];
         if (!c || !isASCII(c))
             return CSSPropertyInvalid; // illegal character
         if (isASCIIUpper(c)) {
@@ -205,7 +204,7 @@ enum class CSSPropertyLookupMode { ConvertUsingDashPrefix, ConvertUsingNoDashPre
 
 template<CSSPropertyLookupMode mode> static CSSPropertyID lookupCSSPropertyFromIDLAttribute(const AtomString& attribute)
 {
-    static NeverDestroyed<UncheckedKeyHashMap<AtomString, CSSPropertyID>> cache;
+    static NeverDestroyed<HashMap<AtomString, CSSPropertyID>> cache;
 
     if (auto id = cache.get().get(attribute))
         return id;
@@ -435,7 +434,7 @@ ExceptionOr<void> PropertySetCSSStyleProperties::setProperty(const String& prope
         return { };
 
     bool changed;
-    if (UNLIKELY(propertyID == CSSPropertyCustom))
+    if (propertyID == CSSPropertyCustom) [[unlikely]]
         changed = m_propertySet->setCustomProperty(propertyName, value, cssParserContext(), important ? IsImportant::Yes : IsImportant::No);
     else
         changed = m_propertySet->setProperty(propertyID, value, cssParserContext(), important ? IsImportant::Yes : IsImportant::No);
@@ -510,9 +509,9 @@ bool PropertySetCSSStyleProperties::isExposed(CSSPropertyID propertyID) const
         return false;
 
     auto parserContext = cssParserContext();
-    bool parsingDescriptor = parserContext.enclosingRuleType && *parserContext.enclosingRuleType != StyleRuleType::Style;
+    bool parsingDescriptor = parserContext->enclosingRuleType && *parserContext->enclosingRuleType != StyleRuleType::Style;
 
-    return WebCore::isExposed(propertyID, &parserContext.propertySettings)
+    return WebCore::isExposed(propertyID, &parserContext->propertySettings)
         && (!CSSProperty::isDescriptorOnly(propertyID) || parsingDescriptor);
 }
 
@@ -538,7 +537,7 @@ StyleSheetContents* PropertySetCSSStyleProperties::contextStyleSheet() const
     return cssStyleSheet ? &cssStyleSheet->contents() : nullptr;
 }
 
-CSSParserContext PropertySetCSSStyleProperties::cssParserContext() const
+OptionalOrReference<CSSParserContext> PropertySetCSSStyleProperties::cssParserContext() const
 {
     return CSSParserContext(m_propertySet->cssParserMode());
 }
@@ -588,7 +587,7 @@ CSSStyleSheet* StyleRuleCSSStyleProperties::parentStyleSheet() const
     return m_parentRule ? m_parentRule->parentStyleSheet() : nullptr;
 }
 
-CSSParserContext StyleRuleCSSStyleProperties::cssParserContext() const
+OptionalOrReference<CSSParserContext> StyleRuleCSSStyleProperties::cssParserContext() const
 {
     auto* styleSheet = contextStyleSheet();
     if (!styleSheet)
@@ -640,12 +639,16 @@ CSSStyleSheet* InlineCSSStyleProperties::parentStyleSheet() const
     return nullptr;
 }
 
-CSSParserContext InlineCSSStyleProperties::cssParserContext() const
+OptionalOrReference<CSSParserContext> InlineCSSStyleProperties::cssParserContext() const
 {
     if (!m_parentElement)
         return PropertySetCSSStyleProperties::cssParserContext();
 
-    CSSParserContext context(m_parentElement->document());
+    auto& documentContext = m_parentElement->document().cssParserContext();
+    if (documentContext.mode == m_propertySet->cssParserMode())
+        return documentContext;
+
+    CSSParserContext context(documentContext);
     context.mode = m_propertySet->cssParserMode();
     return context;
 }

@@ -256,11 +256,16 @@ static void dumpUIView(TextStream& ts, UIView *view)
         auto rects = [(WKBaseScrollView *)view overlayRegionsForTesting];
         auto overlaysAsStrings = adoptNS([[NSMutableArray alloc] initWithCapacity:rects.size()]);
         for (auto rect : rects)
-            [overlaysAsStrings addObject:rectToString(CGRect(rect))];
+            [overlaysAsStrings addObject:rectToString(CGRect(rect)).createNSString().get()];
 
         [overlaysAsStrings sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
         for (NSString *overlayAsString in overlaysAsStrings.get())
             ts.dumpProperty("overlay region"_s, overlayAsString);
+
+        auto& associatedLayers = [(WKBaseScrollView *)view overlayRegionAssociatedLayersForTesting];
+        auto associatedLayersCount = associatedLayers.size();
+        if (associatedLayersCount > 0)
+            ts.dumpProperty("associated layers"_s, associatedLayersCount);
     }
 #endif
 
@@ -310,7 +315,7 @@ static void dumpUIView(TextStream& ts, UIView *view)
         dumpUIView(ts, self);
     }
 
-    return ts.release();
+    return ts.release().createNSString().autorelease();
 }
 
 - (NSString *)_scrollbarState:(unsigned long long)rawScrollingNodeID processID:(unsigned long long)processID isVertical:(bool)isVertical
@@ -325,9 +330,28 @@ static void dumpUIView(TextStream& ts, UIView *view)
             TextStream::GroupScope scope(ts);
             ts << ([_scrollView showsHorizontalScrollIndicator] ? ""_s : "none"_s);
         }
-        return ts.release();
+        return ts.release().createNSString().autorelease();
     }
-    return _page->scrollbarStateForScrollingNodeID(scrollingNodeID, isVertical);
+    return _page->scrollbarStateForScrollingNodeID(scrollingNodeID, isVertical).createNSString().autorelease();
+}
+
+- (UIView *)_colorExtensionViewForTesting:(UIRectEdge)edge
+{
+#if ENABLE(CONTENT_INSET_BACKGROUND_FILL)
+    switch (edge) {
+    case UIRectEdgeTop:
+        return _fixedColorExtensionViews.at(WebCore::BoxSide::Top).get();
+    case UIRectEdgeLeft:
+        return _fixedColorExtensionViews.at(WebCore::BoxSide::Left).get();
+    case UIRectEdgeBottom:
+        return _fixedColorExtensionViews.at(WebCore::BoxSide::Bottom).get();
+    case UIRectEdgeRight:
+        return _fixedColorExtensionViews.at(WebCore::BoxSide::Right).get();
+    default:
+        break;
+    }
+#endif // ENABLE(CONTENT_INSET_BACKGROUND_FILL)
+    return nil;
 }
 
 - (NSNumber *)_stableStateOverride
@@ -410,12 +434,6 @@ static void dumpUIView(TextStream& ts, UIView *view)
     if (handler)
         handlerWrapper = [handler = makeBlockPtr(handler)] { return handler(); };
     _page->setDeviceOrientationUserPermissionHandlerForTesting(WTFMove(handlerWrapper));
-}
-
-- (void)_setDeviceHasAGXCompilerServiceForTesting
-{
-    if (_page)
-        _page->setDeviceHasAGXCompilerServiceForTesting();
 }
 
 - (void)_resetObscuredInsetsForTesting

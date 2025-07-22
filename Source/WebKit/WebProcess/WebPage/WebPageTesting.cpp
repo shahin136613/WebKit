@@ -38,6 +38,8 @@
 #include <WebCore/Editor.h>
 #include <WebCore/FocusController.h>
 #include <WebCore/IntPoint.h>
+#include <WebCore/LocalFrameInlines.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/NotificationController.h>
 #include <WebCore/Page.h>
 #include <wtf/TZoneMallocInlines.h>
@@ -87,8 +89,7 @@ void WebPageTesting::isEditingCommandEnabled(const String& commandName, Completi
     if (!page)
         return completionHandler(false);
 
-    RefPtr corePage = page->corePage();
-    RefPtr frame = corePage->checkedFocusController()->focusedOrMainFrame();
+    RefPtr frame = page->corePage()->focusController().focusedOrMainFrame();
     if (!frame)
         return completionHandler(false);
 

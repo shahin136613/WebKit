@@ -36,10 +36,11 @@ Pre word start to next word end: some text
 
 Current character is: t
 Left word is: text
-Right word is: text
+Right word is:
 Pre word start to next word end: text
 
-Current character is: I
+Current character is:
+I
 Left word is: I'm
 Right word is: I'm
 Pre word start to next word end: I'm

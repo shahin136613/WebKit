@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2018 Yusuke Suzuki <utatane.tea@gmail.com>
- * Copyright (C) 2024 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -110,9 +110,12 @@ private:
 
 inline bool operator==(ASCIILiteral a, ASCIILiteral b)
 {
-    if (!a || !b)
-        return a.characters() == b.characters();
-    return equalSpans(a.span(), b.span());
+    return equalSpans(a.spanIncludingNullTerminator(), b.spanIncludingNullTerminator());
+}
+
+inline auto operator<=>(ASCIILiteral a, ASCIILiteral b)
+{
+    return compareSpans(a.spanIncludingNullTerminator(), b.spanIncludingNullTerminator());
 }
 
 inline unsigned ASCIILiteral::hash() const

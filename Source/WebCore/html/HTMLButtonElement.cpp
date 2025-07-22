@@ -71,11 +71,6 @@ Ref<HTMLButtonElement> HTMLButtonElement::create(Document& document)
     return adoptRef(*new HTMLButtonElement(buttonTag, document, nullptr));
 }
 
-void HTMLButtonElement::setType(const AtomString& type)
-{
-    setAttributeWithoutSynchronization(typeAttr, type);
-}
-
 RenderPtr<RenderElement> HTMLButtonElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition& position)
 {
     // https://html.spec.whatwg.org/multipage/rendering.html#button-layout
@@ -164,6 +159,12 @@ static const AtomString& closeAtom()
     return identifier;
 }
 
+static const AtomString& requestCloseAtom()
+{
+    static MainThreadNeverDestroyed<const AtomString> identifier("request-close"_s);
+    return identifier;
+}
+
 static const AtomString& showModalAtom()
 {
     static MainThreadNeverDestroyed<const AtomString> identifier("show-modal"_s);
@@ -190,6 +191,9 @@ CommandType HTMLButtonElement::commandType() const
 
     if (equalIgnoringASCIICase(action, closeAtom()))
         return CommandType::Close;
+
+    if (equalIgnoringASCIICase(action, requestCloseAtom()))
+        return CommandType::RequestClose;
 
     if (action.startsWith("--"_s))
         return CommandType::Custom;
@@ -238,6 +242,8 @@ const AtomString& HTMLButtonElement::command() const
         return hidePopoverAtom();
     case CommandType::Close:
         return closeAtom();
+    case CommandType::RequestClose:
+        return requestCloseAtom();
     case CommandType::ShowModal:
         return showModalAtom();
     case CommandType::Custom:
@@ -248,11 +254,6 @@ const AtomString& HTMLButtonElement::command() const
 
     ASSERT_NOT_REACHED();
     return nullAtom();
-}
-
-void HTMLButtonElement::setCommand(const AtomString& value)
-{
-    setAttributeWithoutSynchronization(HTMLNames::commandAttr, value);
 }
 
 void HTMLButtonElement::defaultEventHandler(Event& event)

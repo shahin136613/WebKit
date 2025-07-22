@@ -45,7 +45,7 @@ GStreamerQuirkRialto::GStreamerQuirkRialto()
 
     for (const auto* sink : rialtoSinks) {
         auto sinkFactory = adoptGRef(gst_element_factory_find(sink));
-        if (UNLIKELY(!sinkFactory))
+        if (!sinkFactory) [[unlikely]]
             continue;
 
         gst_object_unref(gst_plugin_feature_load(GST_PLUGIN_FEATURE(sinkFactory.get())));
@@ -66,6 +66,14 @@ GStreamerQuirkRialto::GStreamerQuirkRialto()
                 m_sinkCaps = WTFMove(templateCaps);
         }
     }
+}
+
+bool GStreamerQuirkRialto::isPlatformSupported() const
+{
+    auto sinkFactory = adoptGRef(gst_element_factory_find("rialtomsevideosink"));
+    if (!sinkFactory)
+        return false;
+    return gst_plugin_feature_get_rank(GST_PLUGIN_FEATURE(sinkFactory.get())) > GST_RANK_MARGINAL;
 }
 
 void GStreamerQuirkRialto::configureElement(GstElement* element, const OptionSet<ElementRuntimeCharacteristics>&)

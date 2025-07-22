@@ -29,6 +29,7 @@
 
 #include "ArrayReferenceTuple.h"
 #include "Decoder.h"
+#include "RemoteDisplayListRecorderIdentifier.h"
 #include "RemoteRenderingBackend.h"
 #include "StreamMessageReceiver.h"
 #include "StreamServerConnection.h"
@@ -54,12 +55,7 @@ struct SharedPreferencesForWebProcess;
 
 class RemoteDisplayListRecorder : public IPC::StreamMessageReceiver, public CanMakeWeakPtr<RemoteDisplayListRecorder> {
 public:
-    static Ref<RemoteDisplayListRecorder> create(WebCore::ImageBuffer& imageBuffer, WebCore::RenderingResourceIdentifier imageBufferIdentifier, RemoteRenderingBackend& renderingBackend)
-    {
-        auto instance = adoptRef(*new RemoteDisplayListRecorder(imageBuffer, imageBufferIdentifier, renderingBackend));
-        instance->startListeningForIPC();
-        return instance;
-    }
+    static Ref<RemoteDisplayListRecorder> create(WebCore::ImageBuffer&, RemoteDisplayListRecorderIdentifier, RemoteRenderingBackend&);
     ~RemoteDisplayListRecorder();
 
     void stopListeningForIPC();
@@ -71,14 +67,35 @@ public:
     void scale(const WebCore::FloatSize& scale);
     void setCTM(const WebCore::AffineTransform&);
     void concatCTM(const WebCore::AffineTransform&);
-    void setInlineFillColor(WebCore::PackedColor::RGBA);
-    void setInlineStroke(std::optional<WebCore::PackedColor::RGBA>, std::optional<float> thickness);
-    void setState(WebCore::DisplayList::SetState&&);
+    void setFillPackedColor(WebCore::PackedColor::RGBA);
+    void setFillColor(const WebCore::Color&);
+    void setFillCachedGradient(WebCore::RenderingResourceIdentifier, const WebCore::AffineTransform&);
+    void setFillGradient(Ref<WebCore::Gradient>&&, const WebCore::AffineTransform&);
+    void setFillPattern(WebCore::RenderingResourceIdentifier tileImageIdentifier, const WebCore::PatternParameters&);
+    void setFillRule(WebCore::WindRule);
+    void setStrokePackedColor(WebCore::PackedColor::RGBA);
+    void setStrokeColor(const WebCore::Color&);
+    void setStrokeCachedGradient(WebCore::RenderingResourceIdentifier, const WebCore::AffineTransform&);
+    void setStrokeGradient(Ref<WebCore::Gradient>&&, const WebCore::AffineTransform&);
+    void setStrokePattern(WebCore::RenderingResourceIdentifier tileImageIdentifier, const WebCore::PatternParameters&);
+    void setStrokePackedColorAndThickness(WebCore::PackedColor::RGBA, float);
+    void setStrokeThickness(float);
+    void setStrokeStyle(WebCore::StrokeStyle);
+    void setCompositeMode(WebCore::CompositeMode);
+    void setDropShadow(std::optional<WebCore::GraphicsDropShadow>);
+    void setStyle(std::optional<WebCore::GraphicsStyle>);
+    void setAlpha(float);
+    void setTextDrawingMode(WebCore::TextDrawingModeFlags);
+    void setImageInterpolationQuality(WebCore::InterpolationQuality);
+    void setShouldAntialias(bool);
+    void setShouldSmoothFonts(bool);
+    void setShouldSubpixelQuantizeFonts(bool);
+    void setShadowsIgnoreTransforms(bool);
+    void setDrawLuminanceMask(bool);
     void setLineCap(WebCore::LineCap);
-    void setLineDash(WebCore::DashArray&&, float dashOffset);
+    void setLineDash(FixedVector<double>&&, float dashOffset);
     void setLineJoin(WebCore::LineJoin);
     void setMiterLimit(float);
-    void clearDropShadow();
     void clip(const WebCore::FloatRect&);
     void clipRoundedRect(const WebCore::FloatRoundedRect&);
     void clipOut(const WebCore::FloatRect&);
@@ -87,7 +104,7 @@ public:
     void clipOutToPath(const WebCore::Path&);
     void clipPath(const WebCore::Path&, WebCore::WindRule);
     void resetClip();
-    void drawGlyphs(WebCore::RenderingResourceIdentifier fontIdentifier, IPC::ArrayReferenceTuple<WebCore::GlyphBufferGlyph, WebCore::GlyphBufferAdvance>, WebCore::FloatPoint localAnchor, WebCore::FontSmoothingMode);
+    void drawGlyphs(WebCore::RenderingResourceIdentifier fontIdentifier, IPC::ArrayReferenceTuple<WebCore::GlyphBufferGlyph, WebCore::FloatSize>, WebCore::FloatPoint localAnchor, WebCore::FontSmoothingMode);
     void drawDecomposedGlyphs(WebCore::RenderingResourceIdentifier fontIdentifier, WebCore::RenderingResourceIdentifier decomposedGlyphsIdentifier);
     void drawFilteredImageBuffer(std::optional<WebCore::RenderingResourceIdentifier> sourceImageIdentifier, const WebCore::FloatRect& sourceImageRect, Ref<WebCore::Filter>&&);
     void drawImageBuffer(WebCore::RenderingResourceIdentifier imageBufferIdentifier, const WebCore::FloatRect& destinationRect, const WebCore::FloatRect& srcRect, WebCore::ImagePaintingOptions);
@@ -96,7 +113,8 @@ public:
 #if PLATFORM(COCOA) && ENABLE(VIDEO)
     void drawVideoFrame(SharedVideoFrame&&, const WebCore::FloatRect& destination, WebCore::ImageOrientation, bool shouldDiscardAlpha);
 #endif
-    void drawPattern(WebCore::RenderingResourceIdentifier imageIdentifier, const WebCore::FloatRect& destRect, const WebCore::FloatRect& tileRect, const WebCore::AffineTransform&, const WebCore::FloatPoint&, const WebCore::FloatSize& spacing, WebCore::ImagePaintingOptions);
+    void drawPatternNativeImage(WebCore::RenderingResourceIdentifier imageIdentifier, const WebCore::FloatRect& destRect, const WebCore::FloatRect& tileRect, const WebCore::AffineTransform&, const WebCore::FloatPoint&, const WebCore::FloatSize& spacing, WebCore::ImagePaintingOptions);
+    void drawPatternImageBuffer(WebCore::RenderingResourceIdentifier imageIdentifier, const WebCore::FloatRect& destRect, const WebCore::FloatRect& tileRect, const WebCore::AffineTransform&, const WebCore::FloatPoint&, const WebCore::FloatSize& spacing, WebCore::ImagePaintingOptions);
     void beginTransparencyLayer(float opacity);
     void beginTransparencyLayerWithCompositeMode(WebCore::CompositeMode);
     void endTransparencyLayer();
@@ -108,10 +126,10 @@ public:
     void drawPath(const WebCore::Path&);
     void drawFocusRingPath(const WebCore::Path&, float outlineWidth, const WebCore::Color&);
     void drawFocusRingRects(const Vector<WebCore::FloatRect>&, float outlineOffset, float outlineWidth, const WebCore::Color&);
-    void fillRect(const WebCore::FloatRect&, WebCore::GraphicsContext::RequiresClipToRect);
+    void fillRect(const WebCore::FloatRect&, WebCore::RequiresClipToRect);
     void fillRectWithColor(const WebCore::FloatRect&, const WebCore::Color&);
     void fillRectWithGradient(const WebCore::FloatRect&, Ref<WebCore::Gradient>&&);
-    void fillRectWithGradientAndSpaceTransform(const WebCore::FloatRect&, Ref<WebCore::Gradient>&&, const WebCore::AffineTransform&, WebCore::GraphicsContext::RequiresClipToRect);
+    void fillRectWithGradientAndSpaceTransform(const WebCore::FloatRect&, Ref<WebCore::Gradient>&&, const WebCore::AffineTransform&, WebCore::RequiresClipToRect);
     void fillCompositedRect(const WebCore::FloatRect&, const WebCore::Color&, WebCore::CompositeOperator, WebCore::BlendMode);
     void fillRoundedRect(const WebCore::FloatRoundedRect&, const WebCore::Color&, WebCore::BlendMode);
     void fillRectWithRoundedHole(const WebCore::FloatRect&, const WebCore::FloatRoundedRect&, const WebCore::Color&);
@@ -152,7 +170,7 @@ public:
     void setURLForRect(const URL&, const WebCore::FloatRect&);
 
 private:
-    RemoteDisplayListRecorder(WebCore::ImageBuffer&, WebCore::RenderingResourceIdentifier, RemoteRenderingBackend&);
+    RemoteDisplayListRecorder(WebCore::ImageBuffer&, RemoteDisplayListRecorderIdentifier, RemoteRenderingBackend&);
 
     void drawFilteredImageBufferInternal(std::optional<WebCore::RenderingResourceIdentifier> sourceImageIdentifier, const WebCore::FloatRect& sourceImageRect, WebCore::Filter&, WebCore::FilterResults&);
 
@@ -171,7 +189,7 @@ private:
 #endif
 
     const Ref<WebCore::ImageBuffer> m_imageBuffer;
-    const WebCore::RenderingResourceIdentifier m_imageBufferIdentifier;
+    const RemoteDisplayListRecorderIdentifier m_identifier;
     const Ref<RemoteRenderingBackend> m_renderingBackend;
     const Ref<RemoteSharedResourceCache> m_sharedResourceCache;
     RefPtr<WebCore::ControlFactory> m_controlFactory;

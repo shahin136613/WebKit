@@ -110,6 +110,16 @@ void TileGrid::setScale(float scale)
     m_controller->willRepaintAllTiles(*this);
 }
 
+#if HAVE(SUPPORT_HDR_DISPLAY)
+bool TileGrid::setNeedsDisplayIfEDRHeadroomExceeds(float headroom)
+{
+    bool changed = false;
+    for (auto& entry : m_tiles)
+        changed |= entry.value.layer->setNeedsDisplayIfEDRHeadroomExceeds(headroom);
+    return changed;
+}
+#endif
+
 void TileGrid::setNeedsDisplay()
 {
     for (auto& entry : m_tiles) {
@@ -210,12 +220,18 @@ void TileGrid::updateTileLayerProperties()
     bool opaque = m_controller->tilesAreOpaque();
     Color tileDebugBorderColor = m_controller->tileDebugBorderColor();
     float tileDebugBorderWidth = m_controller->tileDebugBorderWidth();
+#if HAVE(SUPPORT_HDR_DISPLAY)
+    bool tonemappingEnabled = m_controller->tonemappingEnabled();
+#endif
     for (auto& tileInfo : m_tiles.values()) {
         tileInfo.layer->setAcceleratesDrawing(acceleratesDrawing);
         tileInfo.layer->setContentsFormat(contentsFormat);
         tileInfo.layer->setOpaque(opaque);
         tileInfo.layer->setBorderColor(tileDebugBorderColor);
         tileInfo.layer->setBorderWidth(tileDebugBorderWidth);
+#if HAVE(SUPPORT_HDR_DISPLAY)
+        tileInfo.layer->setTonemappingEnabled(tonemappingEnabled);
+#endif
     }
 }
 
@@ -597,9 +613,9 @@ IntRect TileGrid::ensureTilesForRect(const FloatRect& rect, HashSet<TileIndex>& 
 
             IntRect tileRect = rectForTileIndex(tileIndex);
 
-            UncheckedKeyHashMap<TileIndex, TileInfo>::iterator it;
+            HashMap<TileIndex, TileInfo>::iterator it;
             constexpr size_t kMaxTileCountPerGrid = 6 * 1024;
-            if (UNLIKELY(m_tiles.size() >= kMaxTileCountPerGrid)) {
+            if (m_tiles.size() >= kMaxTileCountPerGrid) [[unlikely]] {
                 it = m_tiles.find(tileIndex);
                 if (it == m_tiles.end())
                     continue;
@@ -812,6 +828,13 @@ bool TileGrid::platformCALayerNeedsPlatformContext(const PlatformCALayer* layer)
     if (auto* layerOwner = m_controller->rootLayer().owner())
         return layerOwner->platformCALayerNeedsPlatformContext(layer);
     return false;
+}
+
+OptionSet<ContentsFormat> TileGrid::screenContentsFormats() const
+{
+    if (auto* layerOwner = m_controller->rootLayer().owner())
+        return layerOwner->screenContentsFormats();
+    return { };
 }
 
 #if ENABLE(RE_DYNAMIC_CONTENT_SCALING)

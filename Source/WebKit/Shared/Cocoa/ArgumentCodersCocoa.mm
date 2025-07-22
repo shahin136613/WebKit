@@ -187,7 +187,7 @@
 {
     RELEASE_ASSERT(m_wrappedURL);
     auto bytes = bytesAsVector(bridge_cast([m_wrappedURL.get() absoluteURL]));
-    [coder encodeBytes:bytes.data() length:bytes.size()];
+    [coder encodeBytes:bytes.span().data() length:bytes.size()];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder
@@ -204,7 +204,7 @@
     }
 
     if (!m_wrappedURL)
-        m_wrappedURL = adoptNS([[NSURL alloc] initWithString:@""]);
+        m_wrappedURL = URL::emptyNSURL();
 
     return self;
 }

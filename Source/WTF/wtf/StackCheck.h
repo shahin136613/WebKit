@@ -47,7 +47,7 @@ constexpr bool verboseStackCheckVerification = false;
 namespace WTF {
 
 class StackCheck {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(StackCheck);
 public:
     class Scope {
     public:
@@ -73,7 +73,7 @@ public:
                 m_checker.m_lastCheckpointStackTrace = StackTrace::captureStackTrace(INT_MAX);
             }
 
-            if (UNLIKELY(stackBetweenCheckpoints <= 0 || stackBetweenCheckpoints >= static_cast<ptrdiff_t>(m_checker.m_reservedZone)))
+            if (stackBetweenCheckpoints <= 0 || stackBetweenCheckpoints >= static_cast<ptrdiff_t>(m_checker.m_reservedZone)) [[unlikely]]
                 reportVerificationFailureAndCrash();
 #endif
         }

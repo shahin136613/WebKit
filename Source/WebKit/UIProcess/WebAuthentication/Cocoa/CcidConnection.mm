@@ -30,7 +30,6 @@
 #import "CcidService.h"
 #import <CryptoTokenKit/TKSmartCard.h>
 #import <WebCore/FidoConstants.h>
-#import <wtf/Algorithms.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/StdLibExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
@@ -46,7 +45,7 @@ Ref<CcidConnection> CcidConnection::create(RetainPtr<TKSmartCard>&& smartCard, C
 CcidConnection::CcidConnection(RetainPtr<TKSmartCard>&& smartCard, CcidService& service)
     : m_smartCard(WTFMove(smartCard))
     , m_service(service)
-    , m_retryTimer(RunLoop::main(), this, &CcidConnection::startPolling)
+    , m_retryTimer(RunLoop::mainSingleton(), this, &CcidConnection::startPolling)
 {
     startPolling();
 }

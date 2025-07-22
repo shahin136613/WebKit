@@ -30,10 +30,11 @@
 #include "AccessibilityList.h"
 
 #include "AXObjectCache.h"
+#include "ContainerNodeInlines.h"
 #include "HTMLElement.h"
 #include "HTMLNames.h"
-#include "ListStyleType.h"
 #include "PseudoElement.h"
+#include "RenderElementInlines.h"
 #include "RenderListItem.h"
 #include "RenderStyleInlines.h"
 
@@ -76,8 +77,8 @@ bool AccessibilityList::isUnorderedList() const
     if (ariaRoleAttribute() == AccessibilityRole::List)
         return true;
 
-    auto* node = this->node();
-    return node && (node->hasTagName(menuTag) || node->hasTagName(ulTag));
+    auto elementName = this->elementName();
+    return elementName == ElementName::HTML_menu || elementName == ElementName::HTML_ul;
 }
 
 bool AccessibilityList::isOrderedList() const
@@ -86,14 +87,12 @@ bool AccessibilityList::isOrderedList() const
     if (ariaRoleAttribute() == AccessibilityRole::Directory)
         return true;
 
-    auto* node = this->node();
-    return node && node->hasTagName(olTag);
+    return elementName() == ElementName::HTML_ol;
 }
 
 bool AccessibilityList::isDescriptionList() const
 {
-    auto* node = this->node();
-    return node && node->hasTagName(dlTag);
+    return elementName() == ElementName::HTML_dl;
 }
 
 bool AccessibilityList::childHasPseudoVisibleListItemMarkers(const Node* node)
@@ -168,16 +167,16 @@ AccessibilityRole AccessibilityList::determineAccessibilityRoleWithCleanChildren
 
     for (const auto& child : children) {
         RefPtr node = child->node();
-        auto* axChild = dynamicDowncast<AccessibilityObject>(child.get());
+        RefPtr axChild = dynamicDowncast<AccessibilityObject>(child.get());
         if (axChild && axChild->ariaRoleAttribute() == AccessibilityRole::ListItem)
             listItemCount++;
-        else if (child->roleValue() == AccessibilityRole::ListItem) {
+        else if (child->role() == AccessibilityRole::ListItem) {
             // Rendered list items always count.
             if (CheckedPtr renderListItem = dynamicDowncast<RenderListItem>(child->renderer())) {
-                if (!hasVisibleMarkers && (renderListItem->style().listStyleType().type != ListStyleType::Type::None || renderListItem->style().listStyleImage() || childHasPseudoVisibleListItemMarkers(renderListItem->element())))
+                if (!hasVisibleMarkers && (!renderListItem->style().listStyleType().isNone() || renderListItem->style().listStyleImage() || childHasPseudoVisibleListItemMarkers(renderListItem->element())))
                     hasVisibleMarkers = true;
                 listItemCount++;
-            } else if (node && node->hasTagName(liTag)) {
+            } else if (WebCore::elementName(node.get()) == ElementName::HTML_li) {
                 // Inline elements that are in a list with an explicit role should also count.
                 if (m_ariaRole == AccessibilityRole::List)
                     listItemCount++;
@@ -197,7 +196,7 @@ AccessibilityRole AccessibilityList::determineAccessibilityRoleWithCleanChildren
             role = AccessibilityRole::Group;
     } else if (!hasVisibleMarkers) {
         // http://webkit.org/b/193382 lists inside of navigation hierarchies should still be considered lists.
-        if (Accessibility::findAncestor<AccessibilityObject>(*this, false, [] (auto& object) { return object.roleValue() == AccessibilityRole::LandmarkNavigation; }))
+        if (Accessibility::findAncestor<AccessibilityObject>(*this, false, [] (auto& object) { return object.role() == AccessibilityRole::LandmarkNavigation; }))
             role = AccessibilityRole::List;
         else
             role = AccessibilityRole::Group;

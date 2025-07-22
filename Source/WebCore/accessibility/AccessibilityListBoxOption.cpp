@@ -31,6 +31,7 @@
 
 #include "AXObjectCache.h"
 #include "AccessibilityListBox.h"
+#include "ContainerNodeInlines.h"
 #include "ElementInlines.h"
 #include "HTMLNames.h"
 #include "HTMLOptGroupElement.h"
@@ -38,6 +39,7 @@
 #include "HTMLSelectElement.h"
 #include "IntRect.h"
 #include "RenderListBox.h"
+#include "RenderObjectInlines.h"
 
 namespace WebCore {
 
@@ -70,7 +72,7 @@ bool AccessibilityListBoxOption::isSelected() const
 
 bool AccessibilityListBoxOption::isSelectedOptionActive() const
 {
-    HTMLSelectElement* listBoxParentNode = listBoxOptionParentNode();
+    RefPtr listBoxParentNode = listBoxOptionParentNode();
     if (!listBoxParentNode)
         return false;
 
@@ -107,7 +109,7 @@ bool AccessibilityListBoxOption::computeIsIgnored() const
     if (!m_node || isIgnoredByDefault())
         return true;
 
-    auto* parent = parentObject();
+    RefPtr parent = parentObject();
     return parent ? parent->isIgnored() : true;
 }
 
@@ -150,7 +152,7 @@ Element* AccessibilityListBoxOption::actionElement() const
 
 AccessibilityObject* AccessibilityListBoxOption::parentObject() const
 {
-    auto* parentNode = listBoxOptionParentNode();
+    RefPtr parentNode = listBoxOptionParentNode();
     if (!parentNode)
         return nullptr;
 
@@ -160,7 +162,7 @@ AccessibilityObject* AccessibilityListBoxOption::parentObject() const
 
 void AccessibilityListBoxOption::setSelected(bool selected)
 {
-    HTMLSelectElement* selectElement = listBoxOptionParentNode();
+    RefPtr selectElement = listBoxOptionParentNode();
     if (!selectElement)
         return;
     
@@ -195,7 +197,7 @@ int AccessibilityListBoxOption::listBoxOptionIndex() const
     if (!m_node)
         return -1;
 
-    auto* selectElement = listBoxOptionParentNode();
+    RefPtr selectElement = listBoxOptionParentNode();
     if (!selectElement)
         return -1;
 

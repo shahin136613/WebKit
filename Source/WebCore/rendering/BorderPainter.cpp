@@ -39,6 +39,7 @@
 #include "RenderBox.h"
 #include "RenderStyleInlines.h"
 #include "RenderTheme.h"
+#include <numeric>
 
 namespace WebCore {
 
@@ -290,7 +291,7 @@ void BorderPainter::paintOutline(const LayoutRect& paintRect) const
     auto& styleToUse = m_renderer->style();
 
     // Only paint the focus ring by hand if the theme isn't able to draw it.
-    if (styleToUse.outlineStyleIsAuto() == OutlineIsAuto::On && !m_renderer->theme().supportsFocusRing(m_renderer, styleToUse)) {
+    if (styleToUse.outlineStyle() == OutlineStyle::Auto && !m_renderer->theme().supportsFocusRing(m_renderer, styleToUse)) {
         Vector<LayoutRect> focusRingRects;
         LayoutRect paintRectToUse { paintRect };
         if (CheckedPtr box = dynamicDowncast<RenderBox>(m_renderer.get()))
@@ -299,10 +300,11 @@ void BorderPainter::paintOutline(const LayoutRect& paintRect) const
         m_renderer->paintFocusRing(m_paintInfo, styleToUse, focusRingRects);
     }
 
-    if (m_renderer->hasOutlineAnnotation() && styleToUse.outlineStyleIsAuto() == OutlineIsAuto::Off && !m_renderer->theme().supportsFocusRing(m_renderer, styleToUse))
+    if (m_renderer->hasOutlineAnnotation() && styleToUse.outlineStyle() != OutlineStyle::Auto && !m_renderer->theme().supportsFocusRing(m_renderer, styleToUse))
         m_renderer->addPDFURLRect(m_paintInfo, paintRect.location());
 
-    if (styleToUse.outlineStyleIsAuto() == OutlineIsAuto::On || styleToUse.outlineStyle() == BorderStyle::None)
+    auto borderStyle = toBorderStyle(styleToUse.outlineStyle());
+    if (!borderStyle || *borderStyle == BorderStyle::None)
         return;
 
     auto outlineWidth = LayoutUnit { styleToUse.outlineWidth() };
@@ -318,11 +320,11 @@ void BorderPainter::paintOutline(const LayoutRect& paintRect) const
     auto closedEdges = RectEdges<bool> { true };
 
     auto outlineEdgeWidths = RectEdges<LayoutUnit> { outlineWidth };
-    auto outlineShape = BorderShape::shapeForOutlineRect(styleToUse, paintRect, outerRect, outlineEdgeWidths, closedEdges);
+    auto outlineShape = BorderShape::shapeForOutsetRect(styleToUse, paintRect, outerRect, outlineEdgeWidths, closedEdges);
 
     auto bleedAvoidance = BleedAvoidance::ShrinkBackground;
     auto appliedClipAlready = false;
-    auto edges = borderEdgesForOutline(styleToUse, document().deviceScaleFactor());
+    auto edges = borderEdgesForOutline(styleToUse, *borderStyle, document().deviceScaleFactor());
     auto haveAllSolidEdges = decorationHasAllSolidEdges(edges);
 
     paintSides(outlineShape, {
@@ -359,7 +361,7 @@ void BorderPainter::paintOutline(const LayoutPoint& paintOffset, const Vector<La
         rect.inflate(outlineOffset + outlineWidth / 2);
         pixelSnappedRects.append(snapRectToDevicePixels(rect, deviceScaleFactor));
     }
-    auto path = PathUtilities::pathWithShrinkWrappedRectsForOutline(pixelSnappedRects, styleToUse.border(), outlineOffset, styleToUse.writingMode(), deviceScaleFactor);
+    auto path = PathUtilities::pathWithShrinkWrappedRectsForOutline(pixelSnappedRects, styleToUse.border().radii(), outlineOffset, styleToUse.writingMode(), deviceScaleFactor);
     if (path.isEmpty()) {
         // Disjoint line spanning inline boxes.
         for (auto rect : lineRects) {
@@ -856,8 +858,7 @@ void BorderPainter::drawBoxSideFromPath(const BorderShape& borderShape, const Pa
                 gapLength += (dashLength  / numberOfGaps);
             }
 
-            auto lineDash = DashArray::from(dashLength, gapLength);
-            graphicsContext.setLineDash(WTFMove(lineDash), dashLength);
+            graphicsContext.setLineDash(DashArray { dashLength, gapLength }, dashLength);
         }
 
         // FIXME: stroking the border path causes issues with tight corners:
@@ -970,40 +971,40 @@ void BorderPainter::clipBorderSidePolygon(const BorderShape& borderShape, BoxSid
     case BoxSide::Top:
         quad = { outerRect.minXMinYCorner(), innerRect.minXMinYCorner(), innerRect.maxXMinYCorner(), outerRect.maxXMinYCorner() };
 
-        if (!innerBorder.radii().topLeft().isZero())
+        if (!Style::isZero(innerBorder.radii().topLeft()))
             findIntersection(outerRect.minXMinYCorner(), innerRect.minXMinYCorner(), innerRect.minXMaxYCorner(), innerRect.maxXMinYCorner(), quad[1]);
 
-        if (!innerBorder.radii().topRight().isZero())
+        if (!Style::isZero(innerBorder.radii().topRight()))
             findIntersection(outerRect.maxXMinYCorner(), innerRect.maxXMinYCorner(), innerRect.minXMinYCorner(), innerRect.maxXMaxYCorner(), quad[2]);
         break;
 
     case BoxSide::Left:
         quad = { outerRect.minXMinYCorner(), innerRect.minXMinYCorner(), innerRect.minXMaxYCorner(), outerRect.minXMaxYCorner() };
 
-        if (!innerBorder.radii().topLeft().isZero())
+        if (!Style::isZero(innerBorder.radii().topLeft()))
             findIntersection(outerRect.minXMinYCorner(), innerRect.minXMinYCorner(), innerRect.minXMaxYCorner(), innerRect.maxXMinYCorner(), quad[1]);
 
-        if (!innerBorder.radii().bottomLeft().isZero())
+        if (!Style::isZero(innerBorder.radii().bottomLeft()))
             findIntersection(outerRect.minXMaxYCorner(), innerRect.minXMaxYCorner(), innerRect.minXMinYCorner(), innerRect.maxXMaxYCorner(), quad[2]);
         break;
 
     case BoxSide::Bottom:
         quad = { outerRect.minXMaxYCorner(), innerRect.minXMaxYCorner(), innerRect.maxXMaxYCorner(), outerRect.maxXMaxYCorner() };
 
-        if (!innerBorder.radii().bottomLeft().isZero())
+        if (!Style::isZero(innerBorder.radii().bottomLeft()))
             findIntersection(outerRect.minXMaxYCorner(), innerRect.minXMaxYCorner(), innerRect.minXMinYCorner(), innerRect.maxXMaxYCorner(), quad[1]);
 
-        if (!innerBorder.radii().bottomRight().isZero())
+        if (!Style::isZero(innerBorder.radii().bottomRight()))
             findIntersection(outerRect.maxXMaxYCorner(), innerRect.maxXMaxYCorner(), innerRect.maxXMinYCorner(), innerRect.minXMaxYCorner(), quad[2]);
         break;
 
     case BoxSide::Right:
         quad = { outerRect.maxXMinYCorner(), innerRect.maxXMinYCorner(), innerRect.maxXMaxYCorner(), outerRect.maxXMaxYCorner() };
 
-        if (!innerBorder.radii().topRight().isZero())
+        if (!Style::isZero(innerBorder.radii().topRight()))
             findIntersection(outerRect.maxXMinYCorner(), innerRect.maxXMinYCorner(), innerRect.minXMinYCorner(), innerRect.maxXMaxYCorner(), quad[1]);
 
-        if (!innerBorder.radii().bottomRight().isZero())
+        if (!Style::isZero(innerBorder.radii().bottomRight()))
             findIntersection(outerRect.maxXMaxYCorner(), innerRect.maxXMaxYCorner(), innerRect.maxXMinYCorner(), innerRect.minXMaxYCorner(), quad[2]);
         break;
     }
@@ -1209,8 +1210,8 @@ void BorderPainter::drawLineForBoxSide(GraphicsContext& graphicsContext, const D
         if (((side == BoxSide::Top || side == BoxSide::Left) && adjacentWidth2 > 0) || ((side == BoxSide::Bottom || side == BoxSide::Right) && adjacentWidth2 < 0))
             offset4 = ceilToDevicePixel(adjacentWidth2 / 2, deviceScaleFactor);
 
-        float adjustedX = ceilToDevicePixel((x1 + x2) / 2, deviceScaleFactor);
-        float adjustedY = ceilToDevicePixel((y1 + y2) / 2, deviceScaleFactor);
+        float adjustedX = ceilToDevicePixel(std::midpoint(x1, x2), deviceScaleFactor);
+        float adjustedY = ceilToDevicePixel(std::midpoint(y1, y2), deviceScaleFactor);
         // Quads can't use the default snapping rect functions.
         x1 = roundToDevicePixel(x1, deviceScaleFactor);
         x2 = roundToDevicePixel(x2, deviceScaleFactor);
@@ -1240,7 +1241,7 @@ void BorderPainter::drawLineForBoxSide(GraphicsContext& graphicsContext, const D
     case BorderStyle::Inset:
     case BorderStyle::Outset:
         color = calculateBorderStyleColor(borderStyle, side, color);
-        FALLTHROUGH;
+        [[fallthrough]];
     case BorderStyle::Solid: {
         StrokeStyle oldStrokeStyle = graphicsContext.strokeStyle();
         ASSERT(x2 >= x1);

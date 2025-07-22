@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2023-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #include "BackgroundFetchManager.h"
 #include "BackgroundFetchRecordInformation.h"
 #include "CacheQueryOptions.h"
+#include "ContextDestructionObserverInlines.h"
 #include "EventNames.h"
 #include "FetchRequest.h"
 #include "FetchResponse.h"
@@ -140,7 +141,7 @@ private:
         m_response = nullptr;
     }
 
-    Ref<SWClientConnection> m_connection;
+    const Ref<SWClientConnection> m_connection;
     BackgroundFetchRecordIdentifier m_recordIdentifier;
 };
 

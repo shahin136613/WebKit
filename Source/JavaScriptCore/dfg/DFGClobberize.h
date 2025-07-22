@@ -161,6 +161,8 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         case PutByValMegamorphic:
         case GetByVal:
         case GetByValMegamorphic:
+        case MultiGetByVal:
+        case MultiPutByVal:
         case StringAt:
         case StringCharAt:
         case StringCharCodeAt:
@@ -266,17 +268,22 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         def(PureValue(node));
         return;
 
+    // JSCallee for Eval can change the scope field.
+    case GetEvalScope:
+        read(World);
+        return;
+
+    case NumberIsFinite:
     case NumberIsNaN:
+    case NumberIsSafeInteger:
         def(PureValue(node));
         return;
 
-    case GlobalIsNaN: {
-        if (node->child1().useKind() == DoubleRepUse)
-            def(PureValue(node));
-        else
-            clobberTop();
+    case GlobalIsFinite:
+    case GlobalIsNaN:
+        ASSERT(node->child1().useKind() == UntypedUse);
+        clobberTop();
         return;
-    }
 
     case StringLocaleCompare:
         read(World);
@@ -364,7 +371,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ArithBitXor:
     case ArithBitLShift:
     case ArithBitRShift:
-    case BitURShift:
+    case ArithBitURShift:
         if (node->child1().useKind() == UntypedUse || node->child2().useKind() == UntypedUse) {
             clobberTop();
             return;
@@ -806,7 +813,6 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case CreateAsyncGenerator:
     case InstanceOf:
     case InstanceOfMegamorphic:
-    case StringValueOf:
     case ObjectKeys:
     case ObjectGetOwnPropertyNames:
     case ObjectGetOwnPropertySymbols:
@@ -814,6 +820,18 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
     case ReflectOwnKeys:
         clobberTop();
         return;
+
+    case StringValueOf:
+        switch (node->child1().useKind()) {
+        case StringOrOtherUse:
+            read(World);
+            write(SideState);
+            def(PureValue(node));
+            return;
+        default:
+            clobberTop();
+            return;
+        }
 
     case ToNumber:
         switch (node->child1().useKind()) {
@@ -873,6 +891,11 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             def(PureValue(node));
             return;
         }
+        clobberTop();
+        return;
+
+    case ValueBitURShift:
+        // URShift >>> does not accept BigInt.
         clobberTop();
         return;
 
@@ -1129,7 +1152,74 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         RELEASE_ASSERT_NOT_REACHED();
         return;
     }
-        
+
+    case MultiGetByVal: {
+        ArrayMode mode = node->arrayMode();
+        LocationKind indexedPropertyLoc = indexedPropertyLocForResultType(node->result());
+        bool canUseCSE = true;
+        for (unsigned i = 0; i < sizeof(ArrayModes) * CHAR_BIT; ++i) {
+            ArrayModes oneArrayMode = 1ULL << i;
+            if (node->arrayModes() & oneArrayMode) {
+                switch (oneArrayMode) {
+                case asArrayModesIgnoringTypedArrays(ArrayWithInt32): {
+                    if (mode.isInBounds() || mode.isOutOfBoundsSaneChain()) {
+                        read(Butterfly_publicLength);
+                        read(IndexedInt32Properties);
+                        break;
+                    }
+                    clobberTop();
+                    break;
+                }
+                case asArrayModesIgnoringTypedArrays(ArrayWithDouble): {
+                    if (mode.isInBounds() || mode.isOutOfBoundsSaneChain()) {
+                        read(Butterfly_publicLength);
+                        read(IndexedDoubleProperties);
+                        break;
+                    }
+                    clobberTop();
+                    break;
+                }
+                case asArrayModesIgnoringTypedArrays(ArrayWithContiguous): {
+                    if (mode.isInBounds() || mode.isOutOfBoundsSaneChain()) {
+                        read(Butterfly_publicLength);
+                        read(IndexedContiguousProperties);
+                        break;
+                    }
+                    clobberTop();
+                    break;
+                }
+                case Int8ArrayMode:
+                case Int16ArrayMode:
+                case Int32ArrayMode:
+                case Uint8ArrayMode:
+                case Uint8ClampedArrayMode:
+                case Float16ArrayMode:
+                case Uint16ArrayMode:
+                case Uint32ArrayMode:
+                case Float32ArrayMode:
+                case Float64ArrayMode:
+                case BigInt64ArrayMode:
+                case BigUint64ArrayMode:
+                    // Even if we hit out-of-bounds, this is fine. TypedArray does not propagate access to its [[Prototype]] when out-of-bounds access happens.
+                    read(TypedArrayProperties);
+                    read(MiscFields);
+                    if (mode.mayBeResizableOrGrowableSharedTypedArray()) {
+                        canUseCSE = false;
+                        write(MiscFields);
+                        write(TypedArrayProperties);
+                    }
+                    break;
+                default:
+                    DFG_CRASH(graph, node, "impossible array mode for MultiGetByVal");
+                    break;
+                }
+            }
+        }
+        if (!mode.isOutOfBounds() && canUseCSE)
+            def(HeapLocation(indexedPropertyLoc, IndexedProperties, graph.child(node, 0).node(), LazyNode(graph.child(node, 1).node()), nullptr, std::bit_cast<void*>(static_cast<uintptr_t>(node->arrayModes()))), LazyNode(node));
+        return;
+    }
+
     case GetMyArgumentByVal:
     case GetMyArgumentByValOutOfBounds: {
         read(Stack);
@@ -1267,6 +1357,83 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
             return;
         }
         RELEASE_ASSERT_NOT_REACHED();
+        return;
+    }
+
+    case MultiPutByVal: {
+        ArrayMode mode = node->arrayMode();
+        for (unsigned i = 0; i < sizeof(ArrayModes) * CHAR_BIT; ++i) {
+            ArrayModes oneArrayMode = 1ULL << i;
+            if (node->arrayModes() & oneArrayMode) {
+                switch (oneArrayMode) {
+                case asArrayModesIgnoringTypedArrays(ArrayWithInt32): {
+                    if (mode.isOutOfBounds()) {
+                        clobberTop();
+                        break;
+                    }
+                    read(Butterfly_publicLength);
+                    read(Butterfly_vectorLength);
+                    read(IndexedInt32Properties);
+                    write(IndexedInt32Properties);
+                    if (mode.mayStoreToHole())
+                        write(Butterfly_publicLength);
+                    break;
+                }
+                case asArrayModesIgnoringTypedArrays(ArrayWithDouble): {
+                    if (mode.isOutOfBounds()) {
+                        clobberTop();
+                        break;
+                    }
+                    read(Butterfly_publicLength);
+                    read(Butterfly_vectorLength);
+                    read(IndexedDoubleProperties);
+                    write(IndexedDoubleProperties);
+                    if (mode.mayStoreToHole())
+                        write(Butterfly_publicLength);
+                    break;
+                }
+                case asArrayModesIgnoringTypedArrays(ArrayWithContiguous): {
+                    if (mode.isOutOfBounds()) {
+                        clobberTop();
+                        break;
+                    }
+                    read(Butterfly_publicLength);
+                    read(Butterfly_vectorLength);
+                    read(IndexedContiguousProperties);
+                    write(IndexedContiguousProperties);
+                    if (mode.mayStoreToHole())
+                        write(Butterfly_publicLength);
+                    break;
+                }
+                case Int8ArrayMode:
+                case Int16ArrayMode:
+                case Int32ArrayMode:
+                case Uint8ArrayMode:
+                case Uint8ClampedArrayMode:
+                case Float16ArrayMode:
+                case Uint16ArrayMode:
+                case Uint32ArrayMode:
+                case Float32ArrayMode:
+                case Float64ArrayMode:
+                case BigInt64ArrayMode:
+                case BigUint64ArrayMode:
+                    // Even if we hit out-of-bounds, this is fine. TypedArray does not propagate access to its [[Prototype]] when out-of-bounds access happens.
+                    if (mode.mayBeResizableOrGrowableSharedTypedArray()) {
+                        read(TypedArrayProperties);
+                        read(MiscFields);
+                        write(TypedArrayProperties);
+                        write(MiscFields);
+                    } else {
+                        read(MiscFields);
+                        write(TypedArrayProperties);
+                    }
+                    break;
+                default:
+                    DFG_CRASH(graph, node, "impossible array mode for MultiPutByVal");
+                    break;
+                }
+            }
+        }
         return;
     }
 
@@ -2005,6 +2172,7 @@ void clobberize(Graph& graph, Node* node, const ReadFunctor& read, const WriteFu
         write(HeapObjectCount);
         return;
 
+    case RegExpSearch:
     case RegExpExec:
     case RegExpTest:
     case RegExpTestInline:

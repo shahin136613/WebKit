@@ -4,7 +4,7 @@
  * Copyright (C) 2005 Eric Seidel <eric@webkit.org>
  * Copyright (C) 2009 Dirk Schulze <krit@webkit.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2021-2022 Apple Inc.  All rights reserved.
+ * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -81,7 +81,7 @@ FloatRect FEDisplacementMap::calculateImageRect(const Filter& filter, std::span<
     return filter.maxEffectRect(primitiveSubregion);
 }
 
-const DestinationColorSpace& FEDisplacementMap::resultColorSpace(const FilterImageVector& inputs) const
+const DestinationColorSpace& FEDisplacementMap::resultColorSpace(std::span<const Ref<FilterImage>> inputs) const
 {
     // Spec: The 'color-interpolation-filters' property only applies to the 'in2' source image
     // and does not apply to the 'in' source image. The 'in' source image must remain in its
@@ -90,7 +90,7 @@ const DestinationColorSpace& FEDisplacementMap::resultColorSpace(const FilterIma
     return inputs[0]->colorSpace();
 }
 
-void FEDisplacementMap::transformInputsColorSpace(const FilterImageVector& inputs) const
+void FEDisplacementMap::transformInputsColorSpace(std::span<const Ref<FilterImage>> inputs) const
 {
     // Do not transform the first primitive input, as per the spec.
     ASSERT(inputs.size() == 2);

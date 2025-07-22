@@ -1,19 +1,15 @@
 EventTargetFactory.cpp
 HTMLNames.cpp
 MathMLNames.cpp
-Modules/WebGPU/GPUQueue.cpp
 Modules/WebGPU/Implementation/WebGPUBindGroupImpl.cpp
 Modules/WebGPU/Implementation/WebGPUDowncastConvertToBackingContext.cpp
 Modules/WebGPU/Implementation/WebGPUXRBindingImpl.cpp
-Modules/async-clipboard/NavigatorClipboard.cpp
 Modules/audiosession/NavigatorAudioSession.cpp
 Modules/beacon/NavigatorBeacon.cpp
 Modules/cache/WindowOrWorkerGlobalScopeCaches.cpp
 Modules/contact-picker/NavigatorContacts.cpp
-Modules/cookie-consent/NavigatorCookieConsent.cpp
 Modules/credentialmanagement/NavigatorCredentials.cpp
 Modules/encryptedmedia/MediaKeySystemController.cpp
-Modules/gamepad/NavigatorGamepad.cpp
 Modules/geolocation/GeolocationController.h
 Modules/geolocation/NavigatorGeolocation.cpp
 Modules/indexeddb/WindowOrWorkerGlobalScopeIndexedDatabase.cpp
@@ -23,7 +19,6 @@ Modules/mediasession/NavigatorMediaSession.cpp
 Modules/mediastream/NavigatorMediaDevices.cpp
 Modules/mediastream/PeerConnectionBackend.cpp
 Modules/mediastream/UserMediaController.h
-Modules/mediastream/libwebrtc/LibWebRTCMediaEndpoint.cpp
 Modules/mediastream/libwebrtc/LibWebRTCPeerConnectionBackend.cpp
 Modules/mediastream/libwebrtc/LibWebRTCRtpReceiverBackend.cpp
 Modules/mediastream/libwebrtc/LibWebRTCRtpTransformBackend.cpp
@@ -87,8 +82,6 @@ domjit/JSNodeDOMJIT.cpp
 editing/TypingCommand.cpp
 html/InputType.cpp
 html/NavigatorUserActivation.cpp
-html/canvas/WebGL2RenderingContext.cpp
-html/canvas/WebGLRenderingContextBase.cpp
 html/track/TextTrackCueGeneric.cpp
 inspector/CommandLineAPIModule.cpp
 inspector/agents/InspectorCSSAgent.cpp
@@ -103,7 +96,6 @@ loader/cache/CachedResourceHandle.h
 mathml/MathMLRowElement.cpp
 page/NavigatorLoginStatus.cpp
 page/mac/EventHandlerMac.mm
-page/scrolling/AsyncScrollingCoordinator.cpp
 platform/ThreadGlobalData.cpp
 platform/ThreadGlobalData.h
 platform/graphics/GraphicsLayer.cpp
@@ -129,7 +121,6 @@ rendering/svg/SVGTextQuery.cpp
 svg/SVGFELightElement.cpp
 svg/SVGPathSegListSource.cpp
 svg/SVGTRefElement.cpp
-svg/SVGTextPositioningElement.cpp
 svg/animation/SVGSMILElement.cpp
 svg/properties/SVGAnimatedDecoratedProperty.h
 svg/properties/SVGAnimatedPrimitiveProperty.h
@@ -141,7 +132,5 @@ testing/InternalSettings.cpp
 testing/Internals.cpp
 testing/cocoa/WebArchiveDumpSupport.mm
 workers/WorkerGlobalScope.cpp
-workers/WorkerMessagingProxy.cpp
 workers/WorkerThread.cpp
 workers/service/background-fetch/ServiceWorkerRegistrationBackgroundFetchAPI.cpp
-xml/XPathStep.cpp

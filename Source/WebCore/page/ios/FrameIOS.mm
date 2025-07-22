@@ -30,6 +30,7 @@
 #import "CSSStyleProperties.h"
 #import "CommonVM.h"
 #import "ComposedTreeIterator.h"
+#import "ContainerNodeInlines.h"
 #import "Document.h"
 #import "DocumentInlines.h"
 #import "DocumentMarkerController.h"
@@ -38,6 +39,7 @@
 #import "ElementRareData.h"
 #import "EventHandler.h"
 #import "EventNames.h"
+#import "EventTargetInlines.h"
 #import "FormController.h"
 #import "FrameSelection.h"
 #import "HTMLAreaElement.h"
@@ -51,6 +53,7 @@
 #import "LocalDOMWindow.h"
 #import "LocalFrameView.h"
 #import "Logging.h"
+#import "NodeInlines.h"
 #import "NodeRenderStyle.h"
 #import "NodeTraversal.h"
 #import "Page.h"
@@ -60,6 +63,7 @@
 #import "RenderLayer.h"
 #import "RenderLayerCompositor.h"
 #import "RenderLayerScrollableArea.h"
+#import "RenderObjectInlines.h"
 #import "RenderTextControl.h"
 #import "RenderView.h"
 #import "RenderedDocumentMarker.h"
@@ -108,7 +112,7 @@ const ViewportArguments& LocalFrame::viewportArguments() const
 
 void LocalFrame::setViewportArguments(const ViewportArguments& arguments)
 {
-    m_viewportArguments = arguments;
+    m_viewportArguments.get() = arguments;
 }
 
 NSArray *LocalFrame::wordsInCurrentParagraph() const
@@ -123,7 +127,7 @@ NSArray *LocalFrame::wordsInCurrentParagraph() const
 
     if (!isStartOfParagraph(end)) {
         VisiblePosition previous = end.previous();
-        UChar c(previous.characterAfter());
+        char16_t c(previous.characterAfter());
         // FIXME: Should use something from ICU or ASCIICType that is not subject to POSIX current language rather than iswpunct.
         if (!iswpunct(c) && !deprecatedIsSpaceOrNewline(c) && c != noBreakSpace)
             end = startOfWord(end);
@@ -162,7 +166,7 @@ NSArray *LocalFrame::wordsInCurrentParagraph() const
 
     if ([words count] > 0 && isEndOfParagraph(position) && !isStartOfParagraph(position)) {
         VisiblePosition previous = position.previous();
-        UChar c(previous.characterAfter());
+        char16_t c(previous.characterAfter());
         if (!deprecatedIsSpaceOrNewline(c) && c != noBreakSpace)
             [words removeLastObject];
     }
@@ -206,8 +210,8 @@ CGRect LocalFrame::renderRectForPoint(CGPoint point, bool* isReplaced, float* fo
             printf("%s %f %f %f %f\n", nodeName, rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
         }
 #endif
-        if (renderer->isRenderBlock() || renderer->isNonReplacedAtomicInline() || renderer->isReplacedOrAtomicInline()) {
-            *isReplaced = renderer->isReplacedOrAtomicInline();
+        if (renderer->isRenderBlock() || renderer->isNonReplacedAtomicInlineLevelBox() || renderer->isBlockLevelReplacedOrAtomicInline()) {
+            *isReplaced = renderer->isBlockLevelReplacedOrAtomicInline();
 #if CHECK_FONT_SIZE
             for (RenderObject* textRenderer = hitRenderer; textRenderer; textRenderer = textRenderer->traverseNext(hitRenderer)) {
                 if (textRenderer->isText()) {
@@ -607,20 +611,20 @@ void LocalFrame::updateLayout() const
         view->adjustViewSize();
 }
 
-NSRect LocalFrame::caretRect()
+IntRect LocalFrame::caretRect()
 {
     VisibleSelection visibleSelection = selection().selection();
     if (visibleSelection.isNone())
-        return CGRectZero;
+        return { };
     return visibleSelection.isCaret() ? selection().absoluteCaretBounds() : VisiblePosition(visibleSelection.end()).absoluteCaretBounds();
 }
 
-NSRect LocalFrame::rectForScrollToVisible()
+IntRect LocalFrame::rectForScrollToVisible()
 {
     VisibleSelection selection(this->selection().selection());
 
     if (selection.isNone())
-        return CGRectZero;
+        return { };
 
     if (selection.isCaret())
         return caretRect();
@@ -664,46 +668,46 @@ void LocalFrame::dispatchPageShowEventBeforeResume()
 
 void LocalFrame::setRangedSelectionBaseToCurrentSelection()
 {
-    m_rangedSelectionBase = selection().selection();
+    m_rangedSelectionBase.get() = selection().selection();
 }
 
 void LocalFrame::setRangedSelectionBaseToCurrentSelectionStart()
 {
     const VisibleSelection& visibleSelection = selection().selection();
-    m_rangedSelectionBase = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
+    m_rangedSelectionBase.get() = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
 }
 
 void LocalFrame::setRangedSelectionBaseToCurrentSelectionEnd()
 {
     const VisibleSelection& visibleSelection = selection().selection();
-    m_rangedSelectionBase = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
+    m_rangedSelectionBase.get() = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
 }
 
 VisibleSelection LocalFrame::rangedSelectionBase() const
 {
-    return m_rangedSelectionBase;
+    return m_rangedSelectionBase.get();
 }
 
 void LocalFrame::clearRangedSelectionInitialExtent()
 {
-    m_rangedSelectionInitialExtent = VisibleSelection();
+    m_rangedSelectionInitialExtent.get() = VisibleSelection();
 }
 
 void LocalFrame::setRangedSelectionInitialExtentToCurrentSelectionStart()
 {
     const VisibleSelection& visibleSelection = selection().selection();
-    m_rangedSelectionInitialExtent = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
+    m_rangedSelectionInitialExtent.get() = VisibleSelection(visibleSelection.start(), visibleSelection.affinity());
 }
 
 void LocalFrame::setRangedSelectionInitialExtentToCurrentSelectionEnd()
 {
     const VisibleSelection& visibleSelection = selection().selection();
-    m_rangedSelectionInitialExtent = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
+    m_rangedSelectionInitialExtent.get() = VisibleSelection(visibleSelection.end(), visibleSelection.affinity());
 }
 
 VisibleSelection LocalFrame::rangedSelectionInitialExtent() const
 {
-    return m_rangedSelectionInitialExtent;
+    return m_rangedSelectionInitialExtent.get();
 }
 
 void LocalFrame::recursiveSetUpdateAppearanceEnabled(bool enabled)
@@ -730,7 +734,7 @@ NSArray *LocalFrame::interpretationsForCurrentRoot() const
 
     // There are no phrases with alternatives, so there is just one interpretation.
     if (markersInRoot.isEmpty())
-        return @[plainText(rangeOfRootContents)];
+        return @[plainText(rangeOfRootContents).createNSString().get()];
 
     // The number of interpretations will be i1 * i2 * ... * iN, where iX is the number of interpretations for the Xth phrase with alternatives.
     size_t interpretationsCount = 1;
@@ -738,7 +742,7 @@ NSArray *LocalFrame::interpretationsForCurrentRoot() const
     for (auto& marker : markersInRoot)
         interpretationsCount *= std::get<Vector<String>>(marker->data()).size() + 1;
 
-    Vector<Vector<UChar>> interpretations;
+    Vector<Vector<char16_t>> interpretations;
     interpretations.grow(interpretationsCount);
 
     Position precedingTextStartPosition = makeDeprecatedLegacyPosition(root, 0);
@@ -785,7 +789,7 @@ NSArray *LocalFrame::interpretationsForCurrentRoot() const
     }
 
     return createNSArray(interpretations, [] (auto& interpretation) {
-        return adoptNS([[NSString alloc] initWithCharacters:reinterpret_cast<const unichar*>(interpretation.data()) length:interpretation.size()]);
+        return adoptNS([[NSString alloc] initWithCharacters:reinterpret_cast<const unichar*>(interpretation.span().data()) length:interpretation.size()]);
     }).autorelease();
 }
 
@@ -835,8 +839,8 @@ void LocalFrame::overflowScrollPositionChangedForNode(const IntPoint& position, 
 
 void LocalFrame::resetAllGeolocationPermission()
 {
-    if (document()->domWindow())
-        document()->domWindow()->resetAllGeolocationPermission();
+    if (document()->window())
+        document()->window()->resetAllGeolocationPermission();
 
     for (RefPtr child = tree().firstChild(); child; child = child->tree().nextSibling()) {
         auto* localChild = dynamicDowncast<LocalFrame>(child.get());

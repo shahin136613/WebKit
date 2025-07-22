@@ -37,6 +37,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
+#include <wtf/text/OrdinalNumber.h>
 #include <wtf/text/TextPosition.h>
 
 namespace JSC {
@@ -222,9 +223,9 @@ public:
     WEBCORE_EXPORT void upgradeInsecureRequestIfNeeded(ResourceRequest&, InsecureRequestType, AlwaysUpgradeRequest = AlwaysUpgradeRequest::No) const;
     WEBCORE_EXPORT void upgradeInsecureRequestIfNeeded(URL&, InsecureRequestType, AlwaysUpgradeRequest = AlwaysUpgradeRequest::No) const;
 
-    UncheckedKeyHashSet<SecurityOriginData> takeNavigationRequestsToUpgrade();
+    HashSet<SecurityOriginData> takeNavigationRequestsToUpgrade();
     void inheritInsecureNavigationRequestsToUpgradeFromOpener(const ContentSecurityPolicy&);
-    void setInsecureNavigationRequestsToUpgrade(UncheckedKeyHashSet<SecurityOriginData>&&);
+    void setInsecureNavigationRequestsToUpgrade(HashSet<SecurityOriginData>&&);
 
     void setClient(ContentSecurityPolicyClient* client) { m_client = client; }
     void updateSourceSelf(const SecurityOrigin&);
@@ -240,6 +241,8 @@ public:
 
     ContentSecurityPolicyModeForExtension contentSecurityPolicyModeForExtension() const { return m_contentSecurityPolicyModeForExtension; }
     const HashAlgorithmSetCollection& hashesToReport();
+
+    void setIsReportingToConsoleEnabled(bool value) { m_isReportingToConsoleEnabled = value; }
 
 private:
     void logToConsole(const String& message, const String& contextURL = String(), const OrdinalNumber& contextLine = OrdinalNumber::beforeFirst(), const OrdinalNumber& contextColumn = OrdinalNumber::beforeFirst(), JSC::JSGlobalObject* = nullptr) const;
@@ -257,7 +260,7 @@ private:
     using ViolatedDirectiveCallback = std::function<void (const ContentSecurityPolicyDirective&)>;
 
     template<typename Predicate, typename... Args>
-    typename std::enable_if<!std::is_convertible<Predicate, ViolatedDirectiveCallback>::value, bool>::type allPoliciesWithDispositionAllow(Disposition, Predicate&&, Args&&...) const;
+    bool allPoliciesWithDispositionAllow(Disposition, Predicate&&, Args&&...) const requires (!std::is_convertible_v<Predicate, ViolatedDirectiveCallback>);
 
     template<typename Predicate, typename... Args>
     bool allPoliciesWithDispositionAllow(Disposition, ViolatedDirectiveCallback&&, Predicate&&, Args&&...) const;
@@ -289,19 +292,20 @@ private:
     String m_lastPolicyWebAssemblyDisabledErrorMessage;
     String m_referrer;
     SandboxFlags m_sandboxFlags;
-    bool m_overrideInlineStyleAllowed { false };
-    bool m_isReportingEnabled { true };
-    bool m_upgradeInsecureRequests { false };
-    bool m_hasAPIPolicy { false };
-    bool m_trustedEvalEnabled { true };
     int m_httpStatusCode { 0 };
     OptionSet<ContentSecurityPolicyHashAlgorithm> m_hashAlgorithmsForInlineScripts;
     OptionSet<ContentSecurityPolicyHashAlgorithm> m_hashAlgorithmsForInlineStylesheets;
-    UncheckedKeyHashSet<SecurityOriginData> m_insecureNavigationRequestsToUpgrade;
+    HashSet<SecurityOriginData> m_insecureNavigationRequestsToUpgrade;
     mutable std::optional<ContentSecurityPolicyResponseHeaders> m_cachedResponseHeaders;
-    bool m_isHeaderDelivered { false };
     ContentSecurityPolicyModeForExtension m_contentSecurityPolicyModeForExtension { ContentSecurityPolicyModeForExtension::None };
     HashAlgorithmSetCollection m_hashesToReport;
+    bool m_isReportingEnabled { true };
+    bool m_overrideInlineStyleAllowed : 1 { false };
+    bool m_isReportingToConsoleEnabled : 1 { true };
+    bool m_upgradeInsecureRequests : 1 { false };
+    bool m_hasAPIPolicy : 1 { false };
+    bool m_trustedEvalEnabled : 1 { true };
+    bool m_isHeaderDelivered : 1 { false };
 };
 
 } // namespace WebCore

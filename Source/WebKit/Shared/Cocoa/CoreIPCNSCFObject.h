@@ -73,7 +73,7 @@ class CoreIPCSecureCoding;
 class CoreIPCString;
 class CoreIPCURL;
 
-using ObjectValue = std::variant<
+using ObjectValue = Variant<
     std::nullptr_t,
     CoreIPCArray,
     CoreIPCCFType,
@@ -117,7 +117,7 @@ using ObjectValue = std::variant<
 >;
 
 class CoreIPCNSCFObject {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(CoreIPCNSCFObject);
 public:
     CoreIPCNSCFObject(id);
     CoreIPCNSCFObject(UniqueRef<ObjectValue>&&);

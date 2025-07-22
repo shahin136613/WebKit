@@ -25,9 +25,9 @@
 
 #pragma once
 
+#import "BindableResource.h"
 #import "CommandBuffer.h"
 #import "CommandsMixin.h"
-#import "SwiftCXXThunk.h"
 #import "WebGPU.h"
 #import "WebGPUExt.h"
 #import <wtf/FastMalloc.h>
@@ -35,6 +35,7 @@
 #import <wtf/Ref.h>
 #import <wtf/RefCountedAndCanMakeWeakPtr.h>
 #import <wtf/RetainReleaseSwift.h>
+#import <wtf/SwiftCXXThunk.h>
 #import <wtf/TZoneMalloc.h>
 #import <wtf/Vector.h>
 #import <wtf/WeakPtr.h>
@@ -52,6 +53,7 @@ struct WGPUCommandEncoderImpl {
 
 namespace WebGPU {
 
+class BindGroup;
 class Buffer;
 class CommandBuffer;
 class ComputePassEncoder;
@@ -138,14 +140,16 @@ public:
     void generateInvalidEncoderStateError();
     bool validateClearBuffer(const Buffer&, uint64_t offset, uint64_t size);
     static void trackEncoder(CommandEncoder&, Vector<uint64_t>&);
-    static void trackEncoder(CommandEncoder&, WeakHashSet<CommandEncoder>&);
+    static void trackEncoder(CommandEncoder&, HashSet<uint64_t, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>>&);
     static size_t computeSize(Vector<uint64_t>&, const Device&);
     uint64_t uniqueId() const { return m_uniqueId; }
     NSMutableSet<id<MTLCounterSampleBuffer>> *timestampBuffers() const { return m_retainedTimestampBuffers; };
-    void addOnCommitHandler(Function<bool(CommandBuffer&)>&&);
+    void addOnCommitHandler(Function<bool(CommandBuffer&, CommandEncoder&)>&&);
 #if ENABLE(WEBGPU_BY_DEFAULT)
     bool useResidencySet(id<MTLResidencySet>);
 #endif
+    void skippedDrawIndexedValidation(uint64_t bufferIdentifier, DrawIndexCacheContainerIterator);
+    void rebindSamplersPreCommit(const BindGroup*);
 
 private:
     CommandEncoder(id<MTLCommandBuffer>, Device&, uint64_t uniqueId);
@@ -176,7 +180,7 @@ private PUBLIC_IN_WEBGPU_SWIFT:
     NSString* m_lastErrorString { nil };
     uint64_t m_debugGroupStackSize { 0 };
     ThreadSafeWeakPtr<CommandBuffer> m_cachedCommandBuffer;
-#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#if CPU(X86_64) && (PLATFORM(MAC) || PLATFORM(MACCATALYST))
     NSMutableSet<id<MTLTexture>> *m_managedTextures { nil };
     NSMutableSet<id<MTLBuffer>> *m_managedBuffers { nil };
 #endif
@@ -189,7 +193,9 @@ private:
     NSMutableSet<id<MTLBuffer>> *m_retainedBuffers { nil };
     HashSet<RefPtr<const Sampler>> m_retainedSamplers;
     NSMutableSet<id<MTLCounterSampleBuffer>> *m_retainedTimestampBuffers { nil };
-    Vector<Function<bool(CommandBuffer&)>> m_onCommitHandlers;
+    Vector<Function<bool(CommandBuffer&, CommandEncoder&)>> m_onCommitHandlers;
+    HashMap<uint64_t, Vector<DrawIndexCacheContainerValue>, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> m_skippedDrawIndexedValidationKeys;
+    Vector<RefPtr<const BindGroup>> m_bindGroups;
 private PUBLIC_IN_WEBGPU_SWIFT:
     int m_bufferMapCount { 0 };
     bool m_makeSubmitInvalid { false };
@@ -201,7 +207,8 @@ private PUBLIC_IN_WEBGPU_SWIFT:
     uint32_t m_currentResidencySetCount { 0 };
 #endif
 private:
-} SWIFT_SHARED_REFERENCE(refCommandEncoder, derefCommandEncoder);
+// FIXME: remove @safe once rdar://151039766 lands
+} __attribute__((swift_attr("@safe"))) SWIFT_SHARED_REFERENCE(refCommandEncoder, derefCommandEncoder);
 
 } // namespace WebGPU
 

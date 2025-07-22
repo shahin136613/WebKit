@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,7 @@
 #import "APIWebsitePolicies.h"
 #import "Connection.h"
 #import "DocumentEditingContext.h"
+#import "DragInitiationResult.h"
 #import "DrawingAreaProxy.h"
 #import "EditingRange.h"
 #import "GlobalFindInPageState.h"
@@ -58,7 +59,6 @@
 #import "UserData.h"
 #import "VideoPresentationManagerProxy.h"
 #import "ViewUpdateDispatcherMessages.h"
-#import "WKBrowsingContextControllerInternal.h"
 #import "WebAuthenticatorCoordinatorProxy.h"
 #import "WebAutocorrectionContext.h"
 #import "WebAutocorrectionData.h"
@@ -69,9 +69,8 @@
 #import "WebProcessPool.h"
 #import "WebProcessProxy.h"
 #import "WebScreenOrientationManagerProxy.h"
-#import <WebCore/AGXCompilerService.h>
-#import <WebCore/ElementIdentifier.h>
 #import <WebCore/LocalFrameView.h>
+#import <WebCore/NodeIdentifier.h>
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
 #import <WebCore/Quirks.h>
@@ -91,8 +90,6 @@
 #import "APINavigationClient.h"
 #import <wtf/text/WTFString.h>
 #endif
-
-#define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, legacyMainFrameProcess().connection())
 
 #define WEBPAGEPROXY_RELEASE_LOG(channel, fmt, ...) RELEASE_LOG(channel, "%p - [pageProxyID=%llu, webPageID=%llu, PID=%i] WebPageProxy::" fmt, this, identifier().toUInt64(), webPageIDInMainFrameProcess().toUInt64(), m_legacyMainFrameProcess->processID(), ##__VA_ARGS__)
 
@@ -595,9 +592,9 @@ void WebPageProxy::performActionOnElements(uint32_t action, Vector<WebCore::Elem
     m_legacyMainFrameProcess->send(Messages::WebPage::PerformActionOnElements(action, elements), webPageIDInMainFrameProcess());
 }
 
-void WebPageProxy::saveImageToLibrary(SharedMemory::Handle&& imageHandle, const String& authorizationToken)
+void WebPageProxy::saveImageToLibrary(IPC::Connection& connection, SharedMemory::Handle&& imageHandle, const String& authorizationToken)
 {
-    MESSAGE_CHECK(isValidPerformActionOnElementAuthorizationToken(authorizationToken));
+    MESSAGE_CHECK_BASE(isValidPerformActionOnElementAuthorizationToken(authorizationToken), connection);
 
     auto sharedMemoryBuffer = SharedMemory::map(WTFMove(imageHandle), SharedMemory::Protection::ReadOnly);
     if (!sharedMemoryBuffer)
@@ -632,10 +629,8 @@ void WebPageProxy::applicationDidEnterBackground()
 
 void WebPageProxy::applicationDidFinishSnapshottingAfterEnteringBackground()
 {
-    if (m_drawingArea) {
-        m_drawingArea->prepareForAppSuspension();
+    if (m_drawingArea)
         m_drawingArea->hideContentUntilPendingUpdate();
-    }
     m_legacyMainFrameProcess->send(Messages::WebPage::ApplicationDidFinishSnapshottingAfterEnteringBackground(), webPageIDInMainFrameProcess());
 }
 
@@ -648,7 +643,7 @@ void WebPageProxy::applicationWillEnterForeground()
 
     m_legacyMainFrameProcess->send(Messages::WebPage::ApplicationWillEnterForeground(isSuspendedUnderLock), webPageIDInMainFrameProcess());
 
-    hardwareKeyboardAvailabilityChanged(m_legacyMainFrameProcess->processPool().cachedHardwareKeyboardState());
+    hardwareKeyboardAvailabilityChanged(m_configuration->processPool().cachedHardwareKeyboardState());
 }
 
 void WebPageProxy::applicationWillResignActive()
@@ -774,10 +769,10 @@ void WebPageProxy::registerWebProcessAccessibilityToken(std::span<const uint8_t>
         pageClient->accessibilityWebProcessTokenReceived(data, protectedLegacyMainFrameProcess()->protectedConnection()->remoteProcessID());
 }
 
-void WebPageProxy::relayAccessibilityNotification(const String& notificationName, std::span<const uint8_t> data)
+void WebPageProxy::relayAccessibilityNotification(String&& notificationName, std::span<const uint8_t> data)
 {
     if (RefPtr pageClient = this->pageClient())
-        pageClient->relayAccessibilityNotification(notificationName, toNSData(data).get());
+        pageClient->relayAccessibilityNotification(WTFMove(notificationName), toNSData(data));
 }
 
 void WebPageProxy::assistiveTechnologyMakeFirstResponder()
@@ -821,15 +816,29 @@ void WebPageProxy::didEndUserTriggeredZooming()
     legacyMainFrameProcess().send(Messages::WebPage::DidEndUserTriggeredZooming(), webPageIDInMainFrameProcess());
 }
 
-void WebPageProxy::potentialTapAtPosition(const WebCore::FloatPoint& position, bool shouldRequestMagnificationInformation, WebKit::TapIdentifier requestID)
+void WebPageProxy::potentialTapAtPosition(std::optional<WebCore::FrameIdentifier> remoteFrameID, const WebCore::FloatPoint& position, bool shouldRequestMagnificationInformation, WebKit::TapIdentifier requestID)
 {
     hideValidationMessage();
-    legacyMainFrameProcess().send(Messages::WebPage::PotentialTapAtPosition(requestID, position, shouldRequestMagnificationInformation), webPageIDInMainFrameProcess());
+    sendWithAsyncReplyToProcessContainingFrame(remoteFrameID, Messages::WebPage::PotentialTapAtPosition(remoteFrameID, requestID, position, shouldRequestMagnificationInformation), Messages::WebPage::PotentialTapAtPosition::Reply { [weakThis = WeakPtr { *this }, shouldRequestMagnificationInformation, requestID] (auto data) {
+        if (!data)
+            return;
+        RefPtr protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+        protectedThis->potentialTapAtPosition(data->targetFrameID, data->transformedPoint, shouldRequestMagnificationInformation, requestID);
+    } });
 }
 
-void WebPageProxy::commitPotentialTap(OptionSet<WebEventModifier> modifiers, TransactionID layerTreeTransactionIdAtLastTouchStart, WebCore::PointerID pointerId)
+void WebPageProxy::commitPotentialTap(std::optional<WebCore::FrameIdentifier> remoteFrameID, OptionSet<WebEventModifier> modifiers, TransactionID layerTreeTransactionIdAtLastTouchStart, WebCore::PointerID pointerId)
 {
-    legacyMainFrameProcess().send(Messages::WebPage::CommitPotentialTap(modifiers, layerTreeTransactionIdAtLastTouchStart, pointerId), webPageIDInMainFrameProcess());
+    sendWithAsyncReplyToProcessContainingFrame(remoteFrameID, Messages::WebPage::CommitPotentialTap(remoteFrameID, modifiers, layerTreeTransactionIdAtLastTouchStart, pointerId), Messages::WebPage::CommitPotentialTap::Reply { [weakThis = WeakPtr { *this }, modifiers, layerTreeTransactionIdAtLastTouchStart, pointerId] (auto targetFrameID) {
+        if (!targetFrameID)
+            return;
+        RefPtr protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+        protectedThis->commitPotentialTap(targetFrameID, modifiers, layerTreeTransactionIdAtLastTouchStart, pointerId);
+    } });
 }
 
 void WebPageProxy::cancelPotentialTap()
@@ -923,16 +932,16 @@ void WebPageProxy::couldNotRestorePageState()
         pageClient->couldNotRestorePageState();
 }
 
-void WebPageProxy::restorePageState(std::optional<WebCore::FloatPoint> scrollPosition, const WebCore::FloatPoint& scrollOrigin, const WebCore::FloatBoxExtent& obscuredInsetsOnSave, double scale)
+void WebPageProxy::restorePageState(IPC::Connection& connection, std::optional<WebCore::FloatPoint> scrollPosition, const WebCore::FloatPoint& scrollOrigin, const WebCore::FloatBoxExtent& obscuredInsetsOnSave, double scale)
 {
-    MESSAGE_CHECK(scale > 0);
+    MESSAGE_CHECK_BASE(scale > 0, connection);
     if (RefPtr pageClient = this->pageClient())
         pageClient->restorePageState(scrollPosition, scrollOrigin, obscuredInsetsOnSave, scale);
 }
 
-void WebPageProxy::restorePageCenterAndScale(std::optional<WebCore::FloatPoint> center, double scale)
+void WebPageProxy::restorePageCenterAndScale(IPC::Connection& connection, std::optional<WebCore::FloatPoint> center, double scale)
 {
-    MESSAGE_CHECK(scale > 0);
+    MESSAGE_CHECK_BASE(scale > 0, connection);
     if (RefPtr pageClient = this->pageClient())
         pageClient->restorePageCenterAndScale(center, scale);
 }
@@ -960,7 +969,7 @@ void WebPageProxy::didProgrammaticallyClearFocusedElement(WebCore::ElementContex
         client->didProgrammaticallyClearFocusedElement(WTFMove(context));
 }
 
-void WebPageProxy::elementDidFocus(const FocusedElementInformation& information, bool userIsInteracting, bool blurPreviousNode, OptionSet<WebCore::ActivityState> activityStateChanges, const UserData& userData)
+void WebPageProxy::elementDidFocus(IPC::Connection& connection, const FocusedElementInformation& information, bool userIsInteracting, bool blurPreviousNode, OptionSet<WebCore::ActivityState> activityStateChanges, const UserData& userData)
 {
     m_pendingInputModeChange = std::nullopt;
 
@@ -968,8 +977,8 @@ void WebPageProxy::elementDidFocus(const FocusedElementInformation& information,
     if (!pageClient)
         return;
 
-    API::Object* userDataObject = legacyMainFrameProcess().transformHandlesToObjects(userData.object()).get();
-    pageClient->elementDidFocus(information, userIsInteracting, blurPreviousNode, activityStateChanges, userDataObject);
+    RefPtr userDataObject = WebProcessProxy::fromConnection(connection)->transformHandlesToObjects(userData.object()).get();
+    pageClient->elementDidFocus(information, userIsInteracting, blurPreviousNode, activityStateChanges, userDataObject.get());
 }
 
 void WebPageProxy::elementDidBlur()
@@ -1210,13 +1219,13 @@ void WebPageProxy::dispatchDidUpdateEditorState()
     m_waitingForPostLayoutEditorStateUpdateAfterFocusingElement = false;
 }
 
-void WebPageProxy::showValidationMessage(const IntRect& anchorClientRect, const String& message)
+void WebPageProxy::showValidationMessage(const IntRect& anchorClientRect, String&& message)
 {
     RefPtr pageClient = this->pageClient();
     if (!pageClient)
         return;
 
-    m_validationBubble = pageClient->createValidationBubble(message, { m_preferences->minimumFontSize() });
+    m_validationBubble = pageClient->createValidationBubble(WTFMove(message), { m_preferences->minimumFontSize() });
 
     // FIXME: When in element fullscreen, UIClient::presentingViewController() may not return the
     // WKFullScreenViewController even though that is the presenting view controller of the WKWebView.
@@ -1299,28 +1308,38 @@ void WebPageProxy::requestDocumentEditingContext(WebKit::DocumentEditingContextR
 
 #if ENABLE(DRAG_SUPPORT)
 
-void WebPageProxy::didHandleDragStartRequest(bool started)
+void WebPageProxy::requestDragStart(std::optional<WebCore::FrameIdentifier> remoteFrameID, const WebCore::IntPoint& clientPosition, const WebCore::IntPoint& globalPosition, OptionSet<WebCore::DragSourceAction> allowedActionsMask, CompletionHandler<void(bool)>&& completionHandler)
 {
-    if (RefPtr pageClient = this->pageClient())
-        pageClient->didHandleDragStartRequest(started);
+    if (!hasRunningProcess())
+        return completionHandler(false);
+
+    sendWithAsyncReplyToProcessContainingFrame(remoteFrameID, Messages::WebPage::RequestDragStart(remoteFrameID, clientPosition, globalPosition, allowedActionsMask), Messages::WebPage::RequestDragStart::Reply { [weakThis = WeakPtr { *this }, allowedActionsMask, completionHandler = WTFMove(completionHandler)] (auto result) mutable {
+        WTF::switchOn(result.result, [&] (bool handled) {
+            completionHandler(handled);
+        }, [&] (DragInitiationResult::RemoteFrameData& data) {
+            RefPtr protectedThis = weakThis.get();
+            if (!protectedThis)
+                return completionHandler(false);
+            protectedThis->requestDragStart(data.targetFrameID, data.transformedClientPosition, data.transformedGlobalPosition, allowedActionsMask, WTFMove(completionHandler));
+        });
+    } });
 }
 
-void WebPageProxy::didHandleAdditionalDragItemsRequest(bool added)
+void WebPageProxy::requestAdditionalItemsForDragSession(std::optional<WebCore::FrameIdentifier> remoteFrameID, const IntPoint& clientPosition, const IntPoint& globalPosition, OptionSet<WebCore::DragSourceAction> allowedActionsMask, CompletionHandler<void(bool)>&& completionHandler)
 {
-    if (RefPtr pageClient = this->pageClient())
-        pageClient->didHandleAdditionalDragItemsRequest(added);
-}
+    if (!hasRunningProcess())
+        return completionHandler(false);
 
-void WebPageProxy::requestDragStart(const WebCore::IntPoint& clientPosition, const WebCore::IntPoint& globalPosition, OptionSet<WebCore::DragSourceAction> allowedActionsMask)
-{
-    if (hasRunningProcess())
-        m_legacyMainFrameProcess->send(Messages::WebPage::RequestDragStart(clientPosition, globalPosition, allowedActionsMask), webPageIDInMainFrameProcess());
-}
-
-void WebPageProxy::requestAdditionalItemsForDragSession(const IntPoint& clientPosition, const IntPoint& globalPosition, OptionSet<WebCore::DragSourceAction> allowedActionsMask)
-{
-    if (hasRunningProcess())
-        m_legacyMainFrameProcess->send(Messages::WebPage::RequestAdditionalItemsForDragSession(clientPosition, globalPosition, allowedActionsMask), webPageIDInMainFrameProcess());
+    sendWithAsyncReplyToProcessContainingFrame(remoteFrameID, Messages::WebPage::RequestAdditionalItemsForDragSession(remoteFrameID, clientPosition, globalPosition, allowedActionsMask), Messages::WebPage::RequestAdditionalItemsForDragSession::Reply { [weakThis = WeakPtr { *this }, allowedActionsMask, completionHandler = WTFMove(completionHandler)] (auto result) mutable {
+        WTF::switchOn(result.result, [&] (bool handled) {
+            completionHandler(handled);
+        }, [&] (DragInitiationResult::RemoteFrameData& data) {
+            RefPtr protectedThis = weakThis.get();
+            if (!protectedThis)
+                return completionHandler(false);
+            protectedThis->requestAdditionalItemsForDragSession(data.targetFrameID, data.transformedClientPosition, data.transformedGlobalPosition, allowedActionsMask, WTFMove(completionHandler));
+        });
+    } });
 }
 
 void WebPageProxy::insertDroppedImagePlaceholders(const Vector<IntSize>& imageSizes, CompletionHandler<void(const Vector<IntRect>&, std::optional<WebCore::TextIndicatorData>)>&& completionHandler)
@@ -1350,10 +1369,10 @@ void WebPageProxy::didConcludeDrop()
 #endif
 
 #if ENABLE(MODEL_PROCESS)
-void WebPageProxy::didReceiveInteractiveModelElement(std::optional<WebCore::ElementIdentifier> elementID)
+void WebPageProxy::didReceiveInteractiveModelElement(std::optional<WebCore::NodeIdentifier> nodeID)
 {
     if (RefPtr pageClient = this->pageClient())
-        pageClient->didReceiveInteractiveModelElement(elementID);
+        pageClient->didReceiveInteractiveModelElement(nodeID);
 }
 #endif
 
@@ -1528,18 +1547,23 @@ String WebPageProxy::predictedUserAgentForRequest(const WebCore::ResourceRequest
 
 WebContentMode WebPageProxy::effectiveContentModeAfterAdjustingPolicies(API::WebsitePolicies& policies, const WebCore::ResourceRequest& request)
 {
-    if (m_preferences->mediaSourceEnabled()) {
+    Ref preferences = m_preferences;
+    if (preferences->mediaSourceEnabled()) {
         // FIXME: This is a compatibility hack to ensure that turning MSE on via the existing preference still enables MSE.
         policies.setMediaSourcePolicy(WebsiteMediaSourcePolicy::Enable);
     }
 
-    if (auto selectors = Quirks::defaultVisibilityAdjustmentSelectors(request.url()))
-        policies.setVisibilityAdjustmentSelectors({ WTFMove(*selectors) });
+    const bool needsSiteSpecificQuirks = preferences->needsSiteSpecificQuirks();
 
-    if (Quirks::needsIPhoneUserAgent(request.url())) {
-        policies.setCustomUserAgent(makeStringByReplacingAll(standardUserAgentWithApplicationName(m_applicationNameForUserAgent), "iPad"_s, "iPhone"_s));
-        policies.setCustomNavigatorPlatform("iPhone"_s);
-        return WebContentMode::Mobile;
+    if (needsSiteSpecificQuirks) {
+        if (auto selectors = Quirks::defaultVisibilityAdjustmentSelectors(request.url()))
+            policies.setVisibilityAdjustmentSelectors({ WTFMove(*selectors) });
+
+        if (Quirks::needsIPhoneUserAgent(request.url())) {
+            policies.setCustomUserAgent(makeStringByReplacingAll(standardUserAgentWithApplicationName(m_applicationNameForUserAgent), "iPad"_s, "iPhone"_s));
+            policies.setCustomNavigatorPlatform("iPhone"_s);
+            return WebContentMode::Mobile;
+        }
     }
 
     bool useDesktopBrowsingMode = useDesktopClassBrowsing(policies, request);
@@ -1555,7 +1579,14 @@ WebContentMode WebPageProxy::effectiveContentModeAfterAdjustingPolicies(API::Web
         auto applicationName = policies.applicationNameForDesktopUserAgent();
         if (applicationName.isEmpty())
             applicationName = applicationNameForDesktopUserAgent();
-        policies.setCustomUserAgent(standardUserAgentWithApplicationName(applicationName, emptyString(), UserAgentType::Desktop));
+        std::optional<String> customUserAgentForQuirk;
+        if (needsSiteSpecificQuirks)
+            customUserAgentForQuirk = Quirks::needsCustomUserAgentOverride(request.url(), m_applicationNameForUserAgent);
+
+        if (customUserAgentForQuirk)
+            policies.setCustomUserAgent(WTFMove(*customUserAgentForQuirk));
+        else
+            policies.setCustomUserAgent(standardUserAgentWithApplicationName(applicationName, emptyString(), UserAgentType::Desktop));
     }
 
     if (policies.customNavigatorPlatform().isEmpty()) {
@@ -1573,7 +1604,7 @@ WebContentMode WebPageProxy::effectiveContentModeAfterAdjustingPolicies(API::Web
     }
 
 #if ENABLE(TOUCH_EVENTS)
-    if (m_preferences->needsSiteSpecificQuirks() && Quirks::shouldOmitTouchEventDOMAttributesForDesktopWebsite(request.url()))
+    if (needsSiteSpecificQuirks && Quirks::shouldOmitTouchEventDOMAttributesForDesktopWebsite(request.url()))
         policies.setOverrideTouchEventDOMAttributesEnabled(false);
 #endif
 
@@ -1624,7 +1655,7 @@ void WebPageProxy::willOpenAppLink()
     // We chose 25 seconds because the system only gives us 30 seconds and we don't want to get too close to that limit
     // to avoid assertion invalidation (or even termination).
     takeOpeningAppLinkActivity();
-    WorkQueue::protectedMain()->dispatchAfter(25_s, [weakThis = WeakPtr { *this }] {
+    WorkQueue::mainSingleton().dispatchAfter(25_s, [weakThis = WeakPtr { *this }] {
         if (RefPtr protectedThis = weakThis.get())
             protectedThis->dropOpeningAppLinkActivity();
     });
@@ -1670,11 +1701,6 @@ std::optional<IPC::AsyncReplyID> WebPageProxy::willPerformPasteCommand(DOMPasteA
     case DOMPasteAccessCategory::Fonts:
         return grantAccessToCurrentPasteboardData(UIPasteboardNameGeneral, WTFMove(completionHandler), frameID);
     }
-}
-
-void WebPageProxy::setDeviceHasAGXCompilerServiceForTesting() const
-{
-    WebCore::setDeviceHasAGXCompilerServiceForTesting();
 }
 
 void WebPageProxy::showDataDetectorsUIForPositionInformation(const InteractionInformationAtPosition& positionInfo)
@@ -1771,9 +1797,14 @@ FloatSize WebPageProxy::viewLayoutSize() const
     return internals().viewportConfigurationViewLayoutSize;
 }
 
+void WebPageProxy::didRefreshDisplay()
+{
+    m_configuration->protectedProcessPool()->didRefreshDisplay();
+}
+
 #if ENABLE(PDF_PAGE_NUMBER_INDICATOR)
 
-void WebPageProxy::createPDFPageNumberIndicator(PDFPluginIdentifier identifier, const IntRect& rect, size_t pageCount)
+void WebPageProxy::createPDFPageNumberIndicator(PDFPluginIdentifier identifier, const IntRect& rect, uint64_t pageCount)
 {
     if (RefPtr pageClient = this->pageClient())
         pageClient->createPDFPageNumberIndicator(identifier, rect, pageCount);
@@ -1791,7 +1822,7 @@ void WebPageProxy::updatePDFPageNumberIndicatorLocation(PDFPluginIdentifier iden
         pageClient->updatePDFPageNumberIndicatorLocation(identifier, rect);
 }
 
-void WebPageProxy::updatePDFPageNumberIndicatorCurrentPage(PDFPluginIdentifier identifier, size_t pageIndex)
+void WebPageProxy::updatePDFPageNumberIndicatorCurrentPage(PDFPluginIdentifier identifier, uint64_t pageIndex)
 {
     if (RefPtr pageClient = this->pageClient())
         pageClient->updatePDFPageNumberIndicatorCurrentPage(identifier, pageIndex);
@@ -1847,6 +1878,5 @@ void WebPageProxy::didEndContextMenuInteraction()
 } // namespace WebKit
 
 #undef WEBPAGEPROXY_RELEASE_LOG
-#undef MESSAGE_CHECK
 
 #endif // PLATFORM(IOS_FAMILY)

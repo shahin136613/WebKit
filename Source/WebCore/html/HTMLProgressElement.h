@@ -37,7 +37,6 @@ public:
     static Ref<HTMLProgressElement> create(const QualifiedName&, Document&);
 
     double value() const;
-    void setValue(double);
 
     double max() const;
     void setMax(double);
@@ -54,7 +53,6 @@ private:
     bool isLabelable() const final { return true; }
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
-    bool childShouldCreateRenderer(const Node&) const final;
     RenderProgress* renderProgress() const;
 
     void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;

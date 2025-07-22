@@ -163,7 +163,7 @@ static inline std::pair<const AtomString&, InputTypeFactory*> findFactory(const 
     static NeverDestroyed factoryMap = createInputTypeFactoryMap();
     auto& map = factoryMap.get();
     auto it = map.find(typeName);
-    if (UNLIKELY(it == map.end())) {
+    if (it == map.end()) [[unlikely]] {
         it = map.find(typeName.convertToASCIILowercase());
         if (it == map.end())
             return { nullAtom(), nullptr };
@@ -177,7 +177,7 @@ RefPtr<InputType> InputType::createIfDifferent(HTMLInputElement& element, const 
         auto& currentTypeName = currentInputType ? currentInputType->formControlType() : nullAtom();
         if (typeName == currentTypeName)
             return nullptr;
-        if (auto factory = findFactory(typeName); LIKELY(factory.second)) {
+        if (auto factory = findFactory(typeName); factory.second) [[likely]] {
             if (factory.first == currentTypeName)
                 return nullptr;
             if (!factory.second->conditionalFunction || std::invoke(factory.second->conditionalFunction, element.document().settings()))
@@ -265,10 +265,10 @@ FormControlState InputType::saveFormControlState() const
 {
     ASSERT(element());
     Ref input = *element();
-    auto currentValue = input->value();
-    if (currentValue == input->defaultValue())
+    AtomString currentValue { input->value().get() };
+    if (currentValue == input->attributeWithoutSynchronization(valueAttr))
         return { };
-    return { { AtomString { currentValue } } };
+    return { { currentValue } };
 }
 
 void InputType::restoreFormControlState(const FormControlState& state)
@@ -437,7 +437,7 @@ bool InputType::sizeShouldIncludeDecoration(int, int& preferredSize) const
     return false;
 }
 
-float InputType::decorationWidth() const
+float InputType::decorationWidth(float) const
 {
     return 0;
 }
@@ -509,8 +509,8 @@ String InputType::valueMissingText() const
 String InputType::validationMessage() const
 {
     ASSERT(element());
-    Ref input = *element();
-    String value = input->value();
+    Ref element = *this->element();
+    String value = element->value();
 
     // The order of the following checks is meaningful. e.g. We'd like to show the
     // badInput message even if the control has other validation errors.
@@ -524,17 +524,17 @@ String InputType::validationMessage() const
         return typeMismatchText();
 
     if (patternMismatch(value)) {
-        auto title = element()->attributeWithoutSynchronization(HTMLNames::titleAttr).string().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
+        auto title = element->attributeWithoutSynchronization(HTMLNames::titleAttr).string().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
         if (title.isEmpty())
             return validationMessagePatternMismatchText();
         return validationMessagePatternMismatchText(title);
     }
 
-    if (input->tooShort())
-        return validationMessageTooShortText(value.length(), input->minLength());
+    if (element->tooShort())
+        return validationMessageTooShortText(value.length(), element->minLength());
 
-    if (input->tooLong())
-        return validationMessageTooLongText(value.length(), input->effectiveMaxLength());
+    if (element->tooLong())
+        return validationMessageTooLongText(value.length(), element->effectiveMaxLength());
 
     if (!isSteppable())
         return emptyString();
@@ -598,7 +598,8 @@ bool InputType::shouldSubmitImplicitly(Event& event)
 RenderPtr<RenderElement> InputType::createInputRenderer(RenderStyle&& style)
 {
     ASSERT(element());
-    return RenderPtr<RenderElement>(RenderElement::createFor(*protectedElement(), WTFMove(style)));
+    // FIXME: https://github.com/llvm/llvm-project/pull/142471 Moving style is not unsafe.
+    SUPPRESS_UNCOUNTED_ARG return RenderPtr<RenderElement>(RenderElement::createFor(*protectedElement(), WTFMove(style)));
 }
 
 void InputType::blur()
@@ -647,9 +648,9 @@ DateComponentsType InputType::dateType() const
 void InputType::dispatchSimulatedClickIfActive(KeyboardEvent& event) const
 {
     ASSERT(element());
-    Ref input = *element();
-    if (input->active())
-        input->dispatchSimulatedClick(&event);
+    Ref element = *this->element();
+    if (element->active())
+        element->dispatchSimulatedClick(&event);
     event.setDefaultHandled();
 }
 
@@ -671,11 +672,11 @@ bool InputType::hasCustomFocusLogic() const
     return true;
 }
 
-bool InputType::isKeyboardFocusable(KeyboardEvent* event) const
+bool InputType::isKeyboardFocusable(const FocusEventData& focusEventData) const
 {
     ASSERT(element());
-    Ref input = *element();
-    return !input->isReadOnly() && input->isTextFormControlKeyboardFocusable(event);
+    Ref element = *this->element();
+    return !element->isReadOnly() && element->isTextFormControlKeyboardFocusable(focusEventData);
 }
 
 bool InputType::isMouseFocusable() const
@@ -736,7 +737,7 @@ bool InputType::rendererIsNeeded()
     return true;
 }
 
-String InputType::fallbackValue() const
+ValueOrReference<String> InputType::fallbackValue() const
 {
     return String();
 }
@@ -811,7 +812,7 @@ bool InputType::isEmptyValue() const
     return true;
 }
 
-String InputType::sanitizeValue(const String& proposedValue) const
+ValueOrReference<String> InputType::sanitizeValue(const String& proposedValue LIFETIME_BOUND) const
 {
     return proposedValue;
 }
@@ -955,13 +956,13 @@ ExceptionOr<void> InputType::applyStep(int count, AnyStepHandling anyStepHandlin
         return { };
 
     ASSERT(element());
-    Ref input = *element();
-    const Decimal current = parseToNumber(input->value(), 0);
+    Ref element = *this->element();
+    const Decimal current = parseToNumber(element->value(), 0);
     Decimal base = stepRange.stepBase();
     Decimal step = stepRange.step();
     Decimal newValue = current;
 
-    const AtomString& stepString = input->getAttribute(HTMLNames::stepAttr);
+    const AtomString& stepString = element->getAttribute(HTMLNames::stepAttr);
 
     if (!equalLettersIgnoringASCIICase(stepString, "any"_s) && stepRange.stepMismatch(current)) {
         // Snap-to-step / clamping steps
@@ -1010,11 +1011,11 @@ ExceptionOr<void> InputType::applyStep(int count, AnyStepHandling anyStepHandlin
 
     Ref protectedThis { *this };
     auto result = setValueAsDecimal(newValue, eventBehavior);
-    if (result.hasException() || !element())
+    if (result.hasException() || !this->element())
         return result;
 
-    if (CheckedPtr cache = input->protectedDocument()->existingAXObjectCache())
-        cache->valueChanged(input);
+    if (CheckedPtr cache = element->protectedDocument()->existingAXObjectCache())
+        cache->valueChanged(element);
 
     return result;
 }
@@ -1102,8 +1103,8 @@ void InputType::stepUpFromRenderer(int n)
         sign = 0;
 
     ASSERT(element());
-    Ref input = *element();
-    String currentStringValue = input->value();
+    Ref element = *this->element();
+    String currentStringValue = element->value();
     Decimal current = parseToNumberOrNaN(currentStringValue);
     if (!current.isFinite()) {
         current = defaultValueForStepUp();
@@ -1117,7 +1118,7 @@ void InputType::stepUpFromRenderer(int n)
     if ((sign > 0 && current < stepRange.minimum()) || (sign < 0 && current > stepRange.maximum()))
         setValueAsDecimal(sign > 0 ? stepRange.minimum() : stepRange.maximum(), DispatchInputAndChangeEvent);
     else {
-        if (stepMismatch(input->value())) {
+        if (stepMismatch(element->value())) {
             ASSERT(!step.isZero());
             const Decimal base = stepRange.stepBase();
             Decimal newValue;
@@ -1187,9 +1188,10 @@ bool InputType::hasTouchEventHandler() const
 
 Decimal InputType::findStepBase(const Decimal& defaultValue) const
 {
-    Decimal stepBase = parseToNumber(element()->attributeWithoutSynchronization(minAttr), Decimal::nan());
+    Ref element = *this->element();
+    Decimal stepBase = parseToNumber(element->attributeWithoutSynchronization(minAttr), Decimal::nan());
     if (!stepBase.isFinite())
-        stepBase = parseToNumber(element()->attributeWithoutSynchronization(valueAttr), defaultValue);
+        stepBase = parseToNumber(element->attributeWithoutSynchronization(valueAttr), defaultValue);
     return stepBase;
 }
 

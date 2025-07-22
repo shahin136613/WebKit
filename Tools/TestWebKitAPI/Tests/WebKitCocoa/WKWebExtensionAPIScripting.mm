@@ -1235,6 +1235,130 @@ TEST(WKWebExtensionAPIScripting, RegisteredScriptIsInjectedAfterContextReloads)
     [manager run];
 }
 
+TEST(WKWebExtensionAPIScripting, PersistentRegisteredScriptIsInjectedAfterContextReloads)
+{
+    TestWebKitAPI::HTTPServer server({
+        { "/"_s, { { { "Content-Type"_s, "text/html"_s } }, ""_s } }
+    }, TestWebKitAPI::HTTPServer::Protocol::Http);
+
+    auto *backgroundScript = Util::constructScript(@[
+        @"browser.webNavigation.onCompleted.addListener(async (details) => {",
+        @"  const pinkValue = 'rgb(255, 192, 203)'",
+        @"  function getBackgroundColor() { return window.getComputedStyle(document.body).getPropertyValue('background-color') }",
+
+        @"  let results = await browser.scripting.executeScript({ target: { tabId: details.tabId, allFrames: false }, func: getBackgroundColor })",
+        @"  browser.test.assertEq(results?.[0]?.result, pinkValue)",
+
+        @"  browser.test.notifyPass()",
+        @"})",
+
+        @"let registeredScripts = await browser.scripting.getRegisteredContentScripts()",
+        @"if (!registeredScripts.length) {",
+        @"  await browser.scripting.registerContentScripts([{ id: '1', matches: [ '*://localhost/*' ], js: [ 'changeBackgroundColorScript.js' ], 'allFrames': true, 'persistAcrossSessions': true }])",
+
+        @"  registeredScripts = await browser.scripting.getRegisteredContentScripts()",
+        @"  browser.test.assertEq(registeredScripts.length, 1)",
+
+        @"  browser.test.sendMessage('Unload extension')",
+        @"} else {",
+        @"  browser.test.assertEq(registeredScripts.length, 1)",
+
+        @"  browser.test.sendMessage('Load Tab')",
+        @"}"
+    ]);
+
+    static auto *resources = @{
+        @"background.js": backgroundScript,
+        @"changeBackgroundColorScript.js": changeBackgroundColorScript,
+    };
+
+    auto manager = Util::parseExtension(scriptingManifest, resources, WKWebExtensionControllerConfiguration._temporaryConfiguration);
+
+    // Give the extension a unique identifier so it opts into saving data in the temporary configuration.
+    manager.get().context.uniqueIdentifier = @"org.webkit.test.extension (76C788B8)";
+
+    EXPECT_FALSE(manager.get().context.hasInjectedContent);
+
+    [manager load];
+    [manager runUntilTestMessage:@"Unload extension"];
+
+    EXPECT_TRUE(manager.get().context.hasInjectedContent);
+
+    [manager unload];
+
+    EXPECT_FALSE(manager.get().context.hasInjectedContent);
+
+    [manager load];
+    [manager runUntilTestMessage:@"Load Tab"];
+
+    EXPECT_TRUE(manager.get().context.hasInjectedContent);
+
+    auto *urlRequest = server.requestWithLocalhost();
+    [manager.get().context setPermissionStatus:WKWebExtensionContextPermissionStatusGrantedExplicitly forURL:urlRequest.URL];
+    [manager.get().defaultTab.webView loadRequest:urlRequest];
+
+    [manager run];
+}
+
+TEST(WKWebExtensionAPIScripting, RegisteredScriptExcludeMatches)
+{
+    TestWebKitAPI::HTTPServer server({
+        { "/"_s, { { { "Content-Type"_s, "text/html"_s } }, ""_s } }
+    }, TestWebKitAPI::HTTPServer::Protocol::Http);
+
+    auto *backgroundScript = Util::constructScript(@[
+        @"browser.webNavigation.onCompleted.addListener(async () => {",
+
+        @"  var expectedResults = [{",
+        @"    id: '1',",
+        @"    js: ['changeBackgroundColorScript.js'],",
+        @"    matches: ['*://*/*'],",
+        @"    persistAcrossSessions: true,",
+        @"    excludeMatches: ['*://*.example.com/*']",
+        @"  }]",
+
+        @"  await browser.scripting.registerContentScripts([{ id: '1', matches: ['*://*/*'], js: ['changeBackgroundColorScript.js'], excludeMatches: ['*://*.example.com/*']}])",
+
+        @"  var results = await browser.scripting.getRegisteredContentScripts()",
+        @"  browser.test.assertDeepEq(results, expectedResults)",
+
+        @"  results = await browser.scripting.getRegisteredContentScripts({ 'ids': ['1'] })",
+        @"  browser.test.assertDeepEq(results, expectedResults)",
+
+        @"  await browser.scripting.unregisterContentScripts()",
+
+        @"  browser.test.notifyPass()",
+        @"})",
+
+        @"browser.test.sendMessage('Load Tab')",
+    ]);
+
+    static auto *resources = @{
+        @"background.js": backgroundScript,
+        @"changeBackgroundColorScript.js": changeBackgroundColorScript,
+    };
+
+    auto manager = Util::loadExtension(scriptingManifest, resources);
+    auto *testContext = manager.get().context;
+
+    // Confirm that the script can't be injected on example.com.
+    auto *exampleURL = [NSURL URLWithString:@"https://example.com/"];
+    EXPECT_FALSE([testContext hasInjectedContentForURL:exampleURL]);
+
+    auto *urlRequest = server.requestWithLocalhost();
+    auto *url = urlRequest.URL;
+
+    auto *matchPattern = [WKWebExtensionMatchPattern matchPatternWithScheme:url.scheme host:url.host path:@"/*"];
+    [testContext setPermissionStatus:WKWebExtensionContextPermissionStatusGrantedExplicitly forPermission:WKWebExtensionPermissionWebNavigation];
+    [testContext setPermissionStatus:WKWebExtensionContextPermissionStatusGrantedExplicitly forMatchPattern:matchPattern];
+
+    [manager runUntilTestMessage:@"Load Tab"];
+
+    [manager.get().defaultTab.webView loadRequest:urlRequest];
+
+    [manager run];
+}
+
 TEST(WKWebExtensionAPIScripting, InjectedOnlyOnce)
 {
     TestWebKitAPI::HTTPServer server({

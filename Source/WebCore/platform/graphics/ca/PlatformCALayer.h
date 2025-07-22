@@ -300,6 +300,13 @@ public:
     virtual GraphicsLayer::CustomAppearance customAppearance() const = 0;
     virtual void updateCustomAppearance(GraphicsLayer::CustomAppearance) = 0;
 
+#if HAVE(SUPPORT_HDR_DISPLAY)
+    virtual bool setNeedsDisplayIfEDRHeadroomExceeds(float);
+
+    virtual void setTonemappingEnabled(bool);
+    virtual bool tonemappingEnabled() const;
+#endif
+
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
     virtual bool isSeparated() const = 0;
     virtual void setIsSeparated(bool) = 0;
@@ -349,7 +356,7 @@ public:
     static void drawRepaintIndicator(GraphicsContext&, PlatformCALayer*, int repaintCount, Color customBackgroundColor = { });
     static CGRect frameForLayer(const PlatformLayer*);
 
-    static ContentsFormat contentsFormatForLayer(Widget* = nullptr, PlatformCALayerClient* = nullptr);
+    static ContentsFormat contentsFormatForLayer(PlatformCALayerClient* = nullptr);
 
     virtual void markFrontBufferVolatileForTesting() { }
     void moveToLayerPool();

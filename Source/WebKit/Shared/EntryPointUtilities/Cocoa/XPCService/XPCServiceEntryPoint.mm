@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,6 +34,7 @@
 #import <wtf/StdLibExtras.h>
 #import <wtf/WTFProcess.h>
 #import <wtf/cocoa/Entitlements.h>
+#import <wtf/darwin/XPCExtras.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
 #import <wtf/text/StringToIntegerConversion.h>
 
@@ -123,34 +124,34 @@ bool XPCServiceInitializerDelegate::getClientProcessName(String& clientProcessNa
 
 bool XPCServiceInitializerDelegate::getExtraInitializationData(HashMap<String, String>& extraInitializationData)
 {
-    xpc_object_t extraDataInitializationDataObject = xpc_dictionary_get_value(m_initializerMessage, "extra-initialization-data");
+    RetainPtr extraDataInitializationDataObject = xpc_dictionary_get_value(m_initializerMessage, "extra-initialization-data");
 
-    auto inspectorProcess = xpcDictionaryGetString(extraDataInitializationDataObject, "inspector-process"_s);
+    auto inspectorProcess = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "inspector-process"_s);
     if (!inspectorProcess.isEmpty())
         extraInitializationData.add("inspector-process"_s, inspectorProcess);
 
-    auto serviceWorkerProcess = xpcDictionaryGetString(extraDataInitializationDataObject, "service-worker-process"_s);
+    auto serviceWorkerProcess = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "service-worker-process"_s);
     if (!serviceWorkerProcess.isEmpty())
         extraInitializationData.add("service-worker-process"_s, WTFMove(serviceWorkerProcess));
-    auto registrableDomain = xpcDictionaryGetString(extraDataInitializationDataObject, "registrable-domain"_s);
+    auto registrableDomain = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "registrable-domain"_s);
     if (!registrableDomain.isEmpty())
         extraInitializationData.add("registrable-domain"_s, WTFMove(registrableDomain));
 
-    auto isPrewarmedProcess = xpcDictionaryGetString(extraDataInitializationDataObject, "is-prewarmed"_s);
+    auto isPrewarmedProcess = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "is-prewarmed"_s);
     if (!isPrewarmedProcess.isEmpty())
         extraInitializationData.add("is-prewarmed"_s, isPrewarmedProcess);
 
-    auto isLockdownModeEnabled = xpcDictionaryGetString(extraDataInitializationDataObject, "enable-lockdown-mode"_s);
+    auto isLockdownModeEnabled = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "enable-lockdown-mode"_s);
     if (!isLockdownModeEnabled.isEmpty())
         extraInitializationData.add("enable-lockdown-mode"_s, isLockdownModeEnabled);
 
     if (!isClientSandboxed()) {
-        auto userDirectorySuffix = xpcDictionaryGetString(extraDataInitializationDataObject, "user-directory-suffix"_s);
+        auto userDirectorySuffix = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "user-directory-suffix"_s);
         if (!userDirectorySuffix.isEmpty())
             extraInitializationData.add("user-directory-suffix"_s, userDirectorySuffix);
     }
 
-    auto alwaysRunsAtBackgroundPriority = xpcDictionaryGetString(extraDataInitializationDataObject, "always-runs-at-background-priority"_s);
+    auto alwaysRunsAtBackgroundPriority = xpcDictionaryGetString(extraDataInitializationDataObject.get(), "always-runs-at-background-priority"_s);
     if (!alwaysRunsAtBackgroundPriority.isEmpty())
         extraInitializationData.add("always-runs-at-background-priority"_s, alwaysRunsAtBackgroundPriority);
 
@@ -233,6 +234,27 @@ void setJSCOptions(xpc_object_t initializerMessage, EnableLockdownMode enableLoc
     }
     if (optionsChanged)
         JSC::Options::notifyOptionsChanged();
+}
+
+void disableJSC(NOESCAPE WTF::CompletionHandler<void(void)>&& beforeFinalizeHandler)
+{
+    g_jscConfig.vmCreationDisallowed = true;
+    g_jscConfig.vmEntryDisallowed = true;
+    g_wtfConfig.useSpecialAbortForExtraSecurityImplications = true;
+
+    WTF::initializeMainThread();
+    {
+        JSC::Options::initialize();
+        JSC::Options::AllowUnfinalizedAccessScope scope;
+        JSC::ExecutableAllocator::disableJIT();
+        JSC::Options::useWasm() = false;
+        JSC::Options::notifyOptionsChanged();
+    }
+    WTF::compilerFence();
+
+    beforeFinalizeHandler();
+
+    JSC::Config::finalize();
 }
 
 void XPCServiceExit()

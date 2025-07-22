@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Samuel Weinig <sam@webkit.org>
+ * Copyright (C) 2024-2025 Samuel Weinig <sam@webkit.org>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,8 +25,10 @@
 #pragma once
 
 #include "CSSBoxShadow.h"
+#include "CSSPrimitiveNumeric.h"
 #include "StyleColor.h"
 #include "StylePrimitiveNumericTypes.h"
+#include "StyleShadow.h"
 
 namespace WebCore {
 namespace Style {
@@ -56,15 +58,51 @@ template<size_t I> const auto& get(const BoxShadow& value)
         return value.inset;
 }
 
+// <box-shadow-list> = <single-box-shadow>#
+using BoxShadowList = ShadowList<BoxShadow>;
+
+// <'box-shadow'> = none | <box-shadow-list>
+// https://www.w3.org/TR/css-backgrounds-3/#propdef-box-shadow
+using BoxShadows = Shadows<BoxShadow>;
+
+// MARK: - Conversions
+
 template<> struct ToCSS<BoxShadow> { auto operator()(const BoxShadow&, const RenderStyle&) -> CSS::BoxShadow; };
 template<> struct ToStyle<CSS::BoxShadow> { auto operator()(const CSS::BoxShadow&, const BuilderState&) -> BoxShadow; };
 
+// `BoxShadowList` is special-cased to return a `CSSBoxShadowPropertyValue`.
+template<> struct CSSValueCreation<BoxShadowList> { Ref<CSSValue> operator()(CSSValuePool&, const RenderStyle&, const BoxShadowList&); };
+template<> struct CSSValueConversion<BoxShadows> { auto operator()(BuilderState&, const CSSValue&) -> BoxShadows; };
+
+// MARK: - Serialization
+
+template<> struct Serialize<BoxShadowList> { void operator()(StringBuilder&, const CSS::SerializationContext&, const RenderStyle&, const BoxShadowList&); };
+
+// MARK: - Blending
+
 template<> struct Blending<BoxShadow> {
-    auto canBlend(const BoxShadow&, const BoxShadow&, const RenderStyle&, const RenderStyle&) -> bool;
     auto blend(const BoxShadow&, const BoxShadow&, const RenderStyle&, const RenderStyle&, const BlendingContext&) -> BoxShadow;
 };
+
+// MARK: - Shadow-specific Interfaces
+
+inline ShadowStyle shadowStyle(const BoxShadow& shadow)
+{
+    return shadow.inset.has_value() ? ShadowStyle::Inset : ShadowStyle::Normal;
+}
+
+inline bool isInset(const BoxShadow& shadow)
+{
+    return shadow.inset.has_value();
+}
+
+inline LayoutUnit paintingSpread(const BoxShadow& shadow)
+{
+    return LayoutUnit { shadow.spread.value };
+}
 
 } // namespace Style
 } // namespace WebCore
 
 DEFINE_SPACE_SEPARATED_TUPLE_LIKE_CONFORMANCE(WebCore::Style::BoxShadow, 5)
+DEFINE_VARIANT_LIKE_CONFORMANCE(WebCore::Style::BoxShadows)

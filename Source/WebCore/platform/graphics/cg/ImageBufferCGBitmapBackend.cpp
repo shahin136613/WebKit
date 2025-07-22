@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2024 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,6 +32,7 @@
 #include "GraphicsContextCG.h"
 #include "ImageBufferUtilitiesCG.h"
 #include "IntRect.h"
+#include "NativeImage.h"
 #include "PixelBuffer.h"
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/TZoneMallocInlines.h>
@@ -130,7 +131,7 @@ void ImageBufferCGBitmapBackend::getPixelBuffer(const IntRect& srcRect, PixelBuf
     ImageBufferBackend::getPixelBuffer(srcRect, m_data, destination);
 }
 
-void ImageBufferCGBitmapBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
+void ImageBufferCGBitmapBackend::putPixelBuffer(const PixelBufferSourceView& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
     ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, m_data);
 }

@@ -35,11 +35,11 @@
 #include "ContextDestructionObserver.h"
 #include "DOMHighResTimeStamp.h"
 #include "EventTarget.h"
-#include "ExceptionOr.h"
+#include "EventTargetInterfaces.h"
 #include "ReducedResolutionSeconds.h"
 #include "ScriptExecutionContext.h"
 #include "Timer.h"
-#include <variant>
+#include <wtf/ContinuousTime.h>
 #include <wtf/ListHashSet.h>
 
 namespace JSC {
@@ -52,6 +52,7 @@ class CachedResource;
 class Document;
 class DocumentLoadTiming;
 class DocumentLoader;
+class EventCounts;
 class NetworkLoadMetrics;
 class PerformanceUserTiming;
 class PerformanceEntry;
@@ -67,6 +68,7 @@ class ResourceTiming;
 class ScriptExecutionContext;
 struct PerformanceMarkOptions;
 struct PerformanceMeasureOptions;
+template<typename> class ExceptionOr;
 
 class Performance final : public RefCounted<Performance>, public ContextDestructionObserver, public EventTarget {
     WTF_MAKE_TZONE_OR_ISO_ALLOCATED(Performance);
@@ -80,6 +82,9 @@ public:
 
     PerformanceNavigation* navigation();
     PerformanceTiming* timing();
+    EventCounts* eventCounts() { return nullptr; }
+
+    unsigned interactionCount() { return 0; }
 
     Vector<Ref<PerformanceEntry>> getEntries() const;
     Vector<Ref<PerformanceEntry>> getEntriesByType(const String& entryType) const;
@@ -92,7 +97,7 @@ public:
     ExceptionOr<Ref<PerformanceMark>> mark(JSC::JSGlobalObject&, const String& markName, std::optional<PerformanceMarkOptions>&&);
     void clearMarks(const String& markName);
 
-    using StartOrMeasureOptions = std::variant<String, PerformanceMeasureOptions>;
+    using StartOrMeasureOptions = Variant<String, PerformanceMeasureOptions>;
     ExceptionOr<Ref<PerformanceMeasure>> measure(JSC::JSGlobalObject&, const String& measureName, std::optional<StartOrMeasureOptions>&&, const String& endMark);
     void clearMeasures(const String& measureName);
 
@@ -113,7 +118,7 @@ public:
     DOMHighResTimeStamp relativeTimeFromTimeOriginInReducedResolution(MonotonicTime) const;
     MonotonicTime monotonicTimeFromRelativeTime(DOMHighResTimeStamp) const;
 
-    ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
+    ScriptExecutionContext* scriptExecutionContext() const final;
 
     using RefCounted::ref;
     using RefCounted::deref;
@@ -154,6 +159,7 @@ private:
     bool m_hasScheduledTimingBufferDeliveryTask { false };
 
     MonotonicTime m_timeOrigin;
+    UNUSED_MEMBER_VARIABLE ContinuousTime m_continuousTimeOrigin;
 
     RefPtr<PerformanceNavigationTiming> m_navigationTiming;
     RefPtr<PerformancePaintTiming> m_firstContentfulPaint;

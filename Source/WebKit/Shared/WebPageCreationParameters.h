@@ -108,7 +108,9 @@ struct WebPageCreationParameters {
     OptionSet<WebCore::ActivityState> activityState { };
     
     WebPreferencesStore store { };
+#if ENABLE(TILED_CA_DRAWING_AREA)
     DrawingAreaType drawingAreaType { };
+#endif
     DrawingAreaIdentifier drawingAreaIdentifier;
     WebPageProxyIdentifier webPageProxyIdentifier;
     WebPageGroupData pageGroupData;
@@ -169,13 +171,9 @@ struct WebPageCreationParameters {
     
     WebCore::ScrollPinningBehavior scrollPinningBehavior { WebCore::ScrollPinningBehavior::DoNotPin };
 
-    // FIXME: This should be std::optional<WebCore::ScrollbarOverlayStyle>, but we would need to
-    // correctly handle enums inside Optionals when encoding and decoding. 
-    std::optional<uint32_t> scrollbarOverlayStyle { };
+    std::optional<WebCore::ScrollbarOverlayStyle> scrollbarOverlayStyle { };
 
     bool backgroundExtendsBeyondPage { false };
-
-    LayerHostingMode layerHostingMode { LayerHostingMode::InProcess };
 
     bool hasResourceLoadClient { false };
 
@@ -220,14 +218,11 @@ struct WebPageCreationParameters {
     Vector<SandboxExtension::Handle> gpuIOKitExtensionHandles { };
     Vector<SandboxExtension::Handle> gpuMachExtensionHandles { };
 #endif
-#if PLATFORM(MAC)
+#if ENABLE(TILED_CA_DRAWING_AREA)
     SandboxExtension::Handle renderServerMachExtensionHandle { };
 #endif
 #if HAVE(STATIC_FONT_REGISTRY)
     Vector<SandboxExtension::Handle> fontMachExtensionHandles { };
-#endif
-#if HAVE(HOSTED_CORE_ANIMATION)
-    WTF::MachSendRight acceleratedCompositingPort { };
 #endif
 #if HAVE(APP_ACCENT_COLORS)
     WebCore::Color accentColor { };
@@ -260,6 +255,8 @@ struct WebPageCreationParameters {
 #endif
 
     bool needsFontAttributes { false };
+
+    bool needsScrollGeometryUpdates { false };
 
     // WebRTC members.
     bool iceCandidateFilteringEnabled { true };
@@ -355,7 +352,6 @@ struct WebPageCreationParameters {
 #if PLATFORM(COCOA)
     String presentingApplicationBundleIdentifier;
 #endif
-    bool hasReceivedAXRequestInUIProcess { false };
     bool shouldSendConsoleLogsToUIProcessForTesting { false };
 };
 

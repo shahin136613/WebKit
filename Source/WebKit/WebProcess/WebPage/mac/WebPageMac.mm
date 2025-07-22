@@ -59,10 +59,12 @@
 #import <QuartzCore/QuartzCore.h>
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/BackForwardController.h>
+#import <WebCore/BoundaryPointInlines.h>
 #import <WebCore/ColorMac.h>
 #import <WebCore/DataDetection.h>
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/Editing.h>
+#import <WebCore/EditingHTMLConverter.h>
 #import <WebCore/Editor.h>
 #import <WebCore/EventHandler.h>
 #import <WebCore/FocusController.h>
@@ -71,7 +73,6 @@
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/GraphicsLayer.h>
 #import <WebCore/HTMLAttachmentElement.h>
-#import <WebCore/HTMLConverter.h>
 #import <WebCore/HTMLImageElement.h>
 #import <WebCore/HTMLPlugInImageElement.h>
 #import <WebCore/HitTestResult.h>
@@ -82,17 +83,20 @@
 #import <WebCore/LocalFrameView.h>
 #import <WebCore/MIMETypeRegistry.h>
 #import <WebCore/NetworkStorageSession.h>
+#import <WebCore/NodeHTMLConverter.h>
 #import <WebCore/NodeRenderStyle.h>
 #import <WebCore/Page.h>
 #import <WebCore/PageOverlayController.h>
 #import <WebCore/PlatformKeyboardEvent.h>
 #import <WebCore/PluginDocument.h>
 #import <WebCore/PointerCharacteristics.h>
+#import <WebCore/Quirks.h>
 #import <WebCore/RemoteFrameView.h>
 #import <WebCore/RemoteUserInputEventData.h>
 #import <WebCore/RenderElement.h>
 #import <WebCore/RenderObject.h>
 #import <WebCore/RenderStyle.h>
+#import <WebCore/RenderTheme.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/ScrollView.h>
 #import <WebCore/StyleInheritedData.h>
@@ -132,17 +136,11 @@ void WebPage::platformInitializeAccessibility(ShouldInitializeNSAccessibility sh
     // Get the pid for the starting process.
     pid_t pid = legacyPresentingApplicationPID();
     createMockAccessibilityElement(pid);
-    if (shouldInitializeNSAccessibility == ShouldInitializeNSAccessibility::Yes) {
-        if (protectedCorePage()->localMainFrame())
-            accessibilityTransferRemoteToken(accessibilityRemoteTokenData());
-    }
+    if (protectedCorePage()->localMainFrame())
+        accessibilityTransferRemoteToken(accessibilityRemoteTokenData());
 
     // Close Mach connection to Launch Services.
-#if HAVE(LS_SERVER_CONNECTION_STATUS_RELEASE_NOTIFICATIONS_MASK)
     _LSSetApplicationLaunchServicesServerConnectionStatus(kLSServerConnectionStatusDoNotConnectToServerMask | kLSServerConnectionStatusReleaseNotificationsMask, nullptr);
-#else
-    _LSSetApplicationLaunchServicesServerConnectionStatus(kLSServerConnectionStatusDoNotConnectToServerMask, nullptr);
-#endif
 
     WebProcess::singleton().revokeLaunchServicesSandboxExtension();
 }
@@ -181,6 +179,8 @@ void WebPage::getPlatformEditorState(LocalFrame& frame, EditorState& result) con
     getPlatformEditorStateCommon(frame, result);
 
     result.canEnableAutomaticSpellingCorrection = result.isContentEditable && frame.protectedEditor()->canEnableAutomaticSpellingCorrection();
+    RefPtr document = frame.document();
+    result.inputMethodUsesCorrectKeyEventOrder = frame.settings().inputMethodUsesCorrectKeyEventOrder() || (document && document->quirks().inputMethodUsesCorrectKeyEventOrder());
 
     if (!result.hasPostLayoutAndVisualData())
         return;
@@ -274,23 +274,27 @@ bool WebPage::executeKeypressCommandsInternal(const Vector<WebCore::KeypressComm
     Ref editor = frame->editor();
     bool eventWasHandled = false;
     for (size_t i = 0; i < commands.size(); ++i) {
-        if (commands[i].commandName == "insertText:"_s) {
+        auto& currentCommand = commands[i];
+        if (currentCommand.commandName == "insertText:"_s) {
             if (editor->hasComposition()) {
                 eventWasHandled = true;
-                editor->confirmComposition(commands[i].text);
+                editor->confirmComposition(currentCommand.text);
             } else {
                 if (!editor->canEdit())
                     continue;
 
                 // An insertText: might be handled by other responders in the chain if we don't handle it.
                 // One example is space bar that results in scrolling down the page.
-                eventWasHandled |= editor->insertText(commands[i].text, event);
+                eventWasHandled |= editor->insertText(currentCommand.text, event);
             }
+        } else if (currentCommand.commandName == "setMarkedText:"_s) {
+            setCompositionAsync(currentCommand.text, currentCommand.underlines, currentCommand.highlights, { },
+                EditingRange { currentCommand.selectedRange }, EditingRange { currentCommand.replacementRange });
         } else {
-            if (commands[i].commandName == "scrollPageDown:"_s || commands[i].commandName == "scrollPageUp:"_s)
+            if (currentCommand.commandName == "scrollPageDown:"_s || currentCommand.commandName == "scrollPageUp:"_s)
                 frame->eventHandler().setProcessingKeyRepeatForPotentialScroll(event && event->repeat());
 
-            Editor::Command command = editor->command(commandNameForSelectorName(commands[i].commandName));
+            Editor::Command command = editor->command(commandNameForSelectorName(currentCommand.commandName));
             if (command.isSupported()) {
                 bool commandExecutedByEditor = command.execute(event);
                 eventWasHandled |= commandExecutedByEditor;
@@ -448,7 +452,7 @@ void WebPage::registerRemoteFrameAccessibilityTokens(pid_t pid, std::span<const 
     auto remoteElement = [elementTokenData length] ? adoptNS([[NSAccessibilityRemoteUIElement alloc] initWithRemoteToken:elementTokenData.get()]) : nil;
 
     createMockAccessibilityElement(pid);
-    [accessibilityRemoteObject() setRemoteParent:remoteElement.get()];
+    [accessibilityRemoteObject() setRemoteParent:remoteElement.get() token:elementTokenData.get()];
     [accessibilityRemoteObject() setFrameIdentifier:frameID];
 }
 
@@ -462,7 +466,7 @@ void WebPage::registerUIProcessAccessibilityTokens(std::span<const uint8_t> elem
     [remoteElement setWindowUIElement:remoteWindow.get()];
     [remoteElement setTopLevelUIElement:remoteWindow.get()];
     [accessibilityRemoteObject() setWindow:remoteWindow.get()];
-    [accessibilityRemoteObject() setRemoteParent:remoteElement.get()];
+    [accessibilityRemoteObject() setRemoteParent:remoteElement.get() token:elementTokenData.get()];
 }
 
 void WebPage::getStringSelectionForPasteboard(CompletionHandler<void(String&&)>&& completionHandler)
@@ -520,15 +524,18 @@ void WebPage::cacheAXSize(const WebCore::IntSize& size)
     [m_mockAccessibilityElement setSize:size];
 }
 
-void WebPage::setAXIsolatedTreeRoot(WebCore::AXCoreObject* root)
+void WebPage::setIsolatedTree(Ref<WebCore::AXIsolatedTree>&& tree)
 {
-    [m_mockAccessibilityElement setIsolatedTreeRoot:root];
+    [m_mockAccessibilityElement setIsolatedTree:WTFMove(tree)];
 }
 #endif
 
 bool WebPage::platformCanHandleRequest(const WebCore::ResourceRequest& request)
 {
-    if ([NSURLConnection canHandleRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody)])
+    RetainPtr nsRequest = request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody);
+    if (!nsRequest.get().URL)
+        return false;
+    if ([NSURLConnection canHandleRequest:nsRequest.get()])
         return true;
 
     // FIXME: Return true if this scheme is any one WebKit2 knows how to handle.
@@ -584,7 +591,7 @@ void WebPage::setTopOverhangImage(WebImage* image)
     if (!frameView)
         return;
 
-    RefPtr layer = frameView->setWantsLayerForTopOverHangArea(image);
+    RefPtr layer = frameView->setWantsLayerForTopOverhangImage(image);
     if (!layer)
         return;
 
@@ -807,8 +814,8 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FrameIdentifier f
             continue;
 
         pageOverlayDidOverrideDataDetectors = true;
-        if (auto* detectedContext = actionContext->context.get())
-            immediateActionResult.platformData.detectedDataActionContext = { { detectedContext } };
+        if (RetainPtr detectedContext = actionContext->context.get())
+            immediateActionResult.platformData.detectedDataActionContext = { { detectedContext.get() } };
         immediateActionResult.platformData.detectedDataBoundingBox = view->contentsToWindow(enclosingIntRect(unitedBoundingBoxes(RenderObject::absoluteTextQuads(actionContext->range))));
         immediateActionResult.platformData.detectedDataTextIndicator = TextIndicator::createWithRange(actionContext->range, indicatorOptions(actionContext->range), TextIndicatorPresentationTransition::FadeIn);
         immediateActionResult.platformData.detectedDataOriginatingPageOverlay = overlay->pageOverlayID();
@@ -1047,11 +1054,11 @@ void WebPage::openPDFWithPreview(PDFPluginIdentifier identifier, CompletionHandl
     completionHandler({ }, { }, { });
 }
 
-void WebPage::createPDFHUD(PDFPluginBase& plugin, const IntRect& boundingBox)
+void WebPage::createPDFHUD(PDFPluginBase& plugin, WebCore::FrameIdentifier frameID, const IntRect& boundingBox)
 {
     auto addResult = m_pdfPlugInsWithHUD.add(plugin.identifier(), plugin);
     if (addResult.isNewEntry)
-        send(Messages::WebPageProxy::CreatePDFHUD(plugin.identifier(), boundingBox));
+        send(Messages::WebPageProxy::CreatePDFHUD(plugin.identifier(), frameID, boundingBox));
 }
 
 void WebPage::updatePDFHUDLocation(PDFPluginBase& plugin, const IntRect& boundingBox)
@@ -1067,27 +1074,6 @@ void WebPage::removePDFHUD(PDFPluginBase& plugin)
 }
 
 #endif // ENABLE(PDF_PLUGIN)
-
-#if ENABLE(INITIALIZE_ACCESSIBILITY_ON_DEMAND)
-void WebPage::initializeAccessibility(Vector<SandboxExtension::Handle>&& handles)
-{
-    RELEASE_LOG(Process, "WebPage::initializeAccessibility, pid = %d", getpid());
-    auto extensions = WTF::compactMap(WTFMove(handles), [](SandboxExtension::Handle&& handle) -> RefPtr<SandboxExtension> {
-        auto extension = SandboxExtension::create(WTFMove(handle));
-        if (extension)
-            extension->consume();
-        return extension;
-    });
-
-    [NSApplication _accessibilityInitialize];
-
-    if (protectedCorePage()->localMainFrame())
-        accessibilityTransferRemoteToken(accessibilityRemoteTokenData());
-
-    for (auto& extension : extensions)
-        extension->revoke();
-}
-#endif
 
 } // namespace WebKit
 

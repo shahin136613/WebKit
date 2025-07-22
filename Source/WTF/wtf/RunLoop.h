@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2010-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies)
- * Portions Copyright (c) 2010 Motorola Mobility, Inc.  All rights reserved.
+ * Portions Copyright (c) 2010 Motorola Mobility, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -63,7 +63,7 @@ namespace WTF {
 #if USE(COCOA_EVENT_LOOP)
 class SchedulePair;
 struct SchedulePairHash;
-using SchedulePairHashSet = UncheckedKeyHashSet<RefPtr<SchedulePair>, SchedulePairHash>;
+using SchedulePairHashSet = HashSet<RefPtr<SchedulePair>, SchedulePairHash>;
 #endif
 
 #if USE(CF)
@@ -87,15 +87,14 @@ public:
 #endif
 
     WTF_EXPORT_PRIVATE static RunLoop& currentSingleton();
-    WTF_EXPORT_PRIVATE static RunLoop& main();
-    static Ref<RunLoop> protectedMain() { return main(); }
+    WTF_EXPORT_PRIVATE static RunLoop& mainSingleton();
 #if USE(WEB_THREAD)
-    WTF_EXPORT_PRIVATE static RunLoop& web();
+    WTF_EXPORT_PRIVATE static RunLoop& webSingleton();
     WTF_EXPORT_PRIVATE static RunLoop* webIfExists();
 #endif
     WTF_EXPORT_PRIVATE static Ref<RunLoop> create(ASCIILiteral threadName, ThreadType = ThreadType::Unknown, Thread::QOS = Thread::QOS::UserInitiated);
 
-    static bool isMain() { SUPPRESS_UNCOUNTED_ARG return main().isCurrent(); }
+    static bool isMain() { return mainSingleton().isCurrent(); }
     WTF_EXPORT_PRIVATE bool isCurrent() const final;
     WTF_EXPORT_PRIVATE ~RunLoop() final;
 
@@ -153,7 +152,7 @@ public:
     private:
         WTF_EXPORT_PRIVATE void start(Seconds interval, bool repeat);
 
-        Ref<RunLoop> m_runLoop;
+        const Ref<RunLoop> m_runLoop;
 
 #if USE(WINDOWS_EVENT_LOOP)
         bool isActiveWithLock() const WTF_REQUIRES_LOCK(m_runLoop->m_loopLock);
@@ -174,12 +173,12 @@ public:
         void stopWithLock() WTF_REQUIRES_LOCK(m_runLoop->m_loopLock);
 
         class ScheduledTask;
-        Ref<ScheduledTask> m_scheduledTask;
+        const Ref<ScheduledTask> m_scheduledTask;
 #endif
     };
 
     class Timer : public TimerBase {
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_DEPRECATED_MAKE_FAST_ALLOCATED(Timer);
     public:
         template <typename TimerFiredClass>
         requires (WTF::HasRefPtrMemberFunctions<TimerFiredClass>::value)
@@ -225,7 +224,7 @@ public:
     };
 
     class DispatchTimer final : public TimerBase, public ThreadSafeRefCounted<DispatchTimer> {
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_DEPRECATED_MAKE_FAST_ALLOCATED(DispatchTimer);
     public:
         DispatchTimer(RunLoop& runLoop)
             : TimerBase(runLoop)
@@ -269,8 +268,8 @@ private:
     Lock m_loopLock;
 #elif USE(COCOA_EVENT_LOOP)
     static void performWork(void*);
-    RetainPtr<CFRunLoopRef> m_runLoop;
-    RetainPtr<CFRunLoopSourceRef> m_runLoopSource;
+    const RetainPtr<CFRunLoopRef> m_runLoop;
+    const RetainPtr<CFRunLoopSourceRef> m_runLoopSource;
 #elif USE(GLIB_EVENT_LOOP)
     void notify(Event, const char*);
 

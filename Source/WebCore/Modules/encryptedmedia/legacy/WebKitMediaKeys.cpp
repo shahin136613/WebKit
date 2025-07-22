@@ -147,21 +147,21 @@ void WebKitMediaKeys::setMediaElement(HTMLMediaElement* element)
     if (RefPtr player = m_mediaElement? m_mediaElement->player() : nullptr) {
         player->setCDM(m_cdm.ptr());
         if (!m_sessions.isEmpty())
-            player->setCDMSession(m_sessions.last()->session());
+            player->setCDMSession(RefPtr { m_sessions.last()->session() }.get());
     }
 }
 
 RefPtr<MediaPlayer> WebKitMediaKeys::cdmMediaPlayer(const LegacyCDM*) const
 {
-    if (!m_mediaElement)
-        return nullptr;
-    return m_mediaElement->player();
+    if (RefPtr mediaElement = m_mediaElement.get())
+        return mediaElement->player();
+    return nullptr;
 }
 
 void WebKitMediaKeys::keyAdded()
 {
-    if (m_mediaElement)
-        m_mediaElement->keyAdded();
+    if (RefPtr mediaElement = m_mediaElement.get())
+        mediaElement->keyAdded();
 }
 
 RefPtr<ArrayBuffer> WebKitMediaKeys::cachedKeyForKeyId(const String& keyId) const

@@ -34,6 +34,7 @@
 #import <WebCore/LengthFunctions.h>
 #import <WebCore/Model.h>
 #import <WebCore/TimingFunction.h>
+#import <ranges>
 #import <wtf/RuntimeApplicationChecks.h>
 #import <wtf/TZoneMallocInlines.h>
 #import <wtf/text/CString.h>
@@ -100,9 +101,7 @@ static void dumpChangedLayers(TextStream& ts, const LayerPropertiesMap& changedL
 
     // Dump the layer properties sorted by layer ID.
     auto layerIDs = copyToVector(changedLayerProperties.keys());
-    std::sort(layerIDs.begin(), layerIDs.end(), [](auto& lhs, auto& rhs) {
-        return lhs.object() < rhs.object();
-    });
+    std::ranges::sort(layerIDs, { }, &WebCore::PlatformLayerIdentifier::object);
 
     for (auto& layerID : layerIDs) {
         const auto& layerProperties = *changedLayerProperties.get(layerID);
@@ -154,9 +153,6 @@ static void dumpChangedLayers(TextStream& ts, const LayerPropertiesMap& changedL
 
         if (layerProperties.changedProperties & LayerChange::MasksToBoundsChanged)
             ts.dumpProperty("masksToBounds"_s, layerProperties.masksToBounds);
-
-        if (layerProperties.changedProperties & LayerChange::OpaqueChanged)
-            ts.dumpProperty("opaque"_s, layerProperties.opaque);
 
         if (layerProperties.changedProperties & LayerChange::ContentsHiddenChanged)
             ts.dumpProperty("contentsHidden"_s, layerProperties.contentsHidden);
@@ -248,8 +244,6 @@ static void dumpChangedLayers(TextStream& ts, const LayerPropertiesMap& changedL
             ts.dumpProperty("isDescendentOfSeparatedPortal"_s, layerProperties.isDescendentOfSeparatedPortal);
 #endif
 #endif
-        if (layerProperties.changedProperties & LayerChange::ContentsFormatChanged)
-            ts.dumpProperty("contentsFormat"_s, layerProperties.contentsFormat);
 
         if (layerProperties.changedProperties & LayerChange::VideoGravityChanged)
             ts.dumpProperty("videoGravity"_s, layerProperties.videoGravity);
@@ -275,6 +269,7 @@ String RemoteLayerTreeTransaction::description() const
 
     ts.dumpProperty("transactionID"_s, m_transactionID);
     ts.dumpProperty("contentsSize"_s, m_contentsSize);
+    ts.dumpProperty("scrollGeometryContentSize"_s, m_scrollGeometryContentSize);
     if (m_scrollOrigin != WebCore::IntPoint::zero())
         ts.dumpProperty("scrollOrigin"_s, m_scrollOrigin);
 
@@ -290,6 +285,7 @@ String RemoteLayerTreeTransaction::description() const
 #if PLATFORM(MAC)
     ts.dumpProperty("pageScalingLayer"_s, m_pageScalingLayerID);
     ts.dumpProperty("scrolledContentsLayerID"_s, m_scrolledContentsLayerID);
+    ts.dumpProperty("mainFrameClipLayerID"_s, m_mainFrameClipLayerID);
 #endif
 
     ts.dumpProperty("minimumScaleFactor"_s, m_minimumScaleFactor);
@@ -422,6 +418,15 @@ uint32_t RemoteLayerTreeTransaction::LayerCreationProperties::hostingContextID()
         return customData->hostingContextID;
     return 0;
 }
+
+#if ENABLE(MACH_PORT_LAYER_HOSTING)
+std::optional<WTF::MachSendRightAnnotated> RemoteLayerTreeTransaction::LayerCreationProperties::sendRightAnnotated() const
+{
+    if (auto* customData = std::get_if<CustomData>(&additionalData))
+        return customData->sendRightAnnotated;
+    return std::nullopt;
+}
+#endif
 
 bool RemoteLayerTreeTransaction::LayerCreationProperties::preservesFlip() const
 {

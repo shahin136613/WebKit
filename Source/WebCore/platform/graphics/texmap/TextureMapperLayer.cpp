@@ -40,6 +40,8 @@ namespace WebCore {
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(TextureMapperLayer);
 
+static constexpr auto s_opacityVisibilityThreshold = 0.01;
+
 class TextureMapperPaintOptions {
 public:
     TextureMapperPaintOptions(TextureMapper& textureMapper)
@@ -69,7 +71,7 @@ struct TextureMapperLayer::ComputeTransformData {
 };
 
 class TextureMapperFlattenedLayer final {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(TextureMapperFlattenedLayer);
 public:
     explicit TextureMapperFlattenedLayer(const IntRect& rect, double zNear, double zFar)
         : m_rect(rect)
@@ -302,7 +304,7 @@ void TextureMapperLayer::computeTransformsRecursive(ComputeTransformData& data)
 #endif
 
 #if ENABLE(DAMAGE_TRACKING)
-        if (canInferDamage() && oldCombined != m_layerTransforms.combined)
+        if (m_damagePropagationEnabled && oldCombined != m_layerTransforms.combined)
             damageWholeLayerIncludingItsRectFromPreviousFrame();
 #endif
     }
@@ -375,14 +377,19 @@ void TextureMapperLayer::paint(TextureMapper& textureMapper)
 Damage& TextureMapperLayer::ensureDamageInLayerCoordinateSpace()
 {
     if (!m_damageInLayerCoordinateSpace)
-        m_damageInLayerCoordinateSpace = Damage();
+        m_damageInLayerCoordinateSpace = Damage(m_state.size);
     return *m_damageInLayerCoordinateSpace;
 }
 
 Damage& TextureMapperLayer::ensureDamageInGlobalCoordinateSpace()
 {
-    if (!m_damageInGlobalCoordinateSpace)
-        m_damageInGlobalCoordinateSpace = Damage();
+    if (!m_damageInGlobalCoordinateSpace) {
+        // For the damage in global coordinates, use the root layer size.
+        auto* rootLayer = this;
+        while (rootLayer->m_parent)
+            rootLayer = rootLayer->m_parent;
+        m_damageInGlobalCoordinateSpace = Damage(rootLayer->m_state.size);
+    }
     return *m_damageInGlobalCoordinateSpace;
 }
 
@@ -404,8 +411,12 @@ void TextureMapperLayer::collectDamage(TextureMapper& textureMapper, Damage& dam
 
 void TextureMapperLayer::collectDamageRecursive(TextureMapperPaintOptions& options, Damage& damage)
 {
-    if (!isVisible())
-        return;
+    if (!isVisible()) {
+        if (m_collectDamageDespiteBeingInvisible)
+            m_collectDamageDespiteBeingInvisible = false;
+        else
+            return;
+    }
 
     SetForScope scopedOpacity(options.opacity, options.opacity * m_currentOpacity);
 
@@ -458,7 +469,7 @@ static FloatRect transformRectFromLayerToGlobalCoordinateSpace(const FloatRect& 
 
 void TextureMapperLayer::collectDamageSelf(TextureMapperPaintOptions& options, Damage& damage)
 {
-    ASSERT(m_damagePropagation);
+    ASSERT(m_damagePropagationEnabled);
 
     m_previousLayerRectInGlobalCoordinateSpace = std::nullopt;
     auto cleanup = WTF::makeScopeExit([&]() {
@@ -473,12 +484,13 @@ void TextureMapperLayer::collectDamageSelf(TextureMapperPaintOptions& options, D
     if (targetRect.isEmpty())
         return;
 
-    if ((!isFlattened() || m_flattenedLayer->needsUpdate())
+    if (m_parent
+        && (!isFlattened() || m_flattenedLayer->needsUpdate())
         && !m_state.backgroundColor.isValid()
         && !m_backingStore
         && (!m_state.solidColor.isValid() || !m_state.solidColor.isVisible())
         && !m_contentsLayer) {
-        // Layers that have no visuals on their own should not contribute to the damage.
+        // Layers that have no visuals on their own should not contribute to the damage - except for the root layer.
         return;
     }
 
@@ -499,17 +511,13 @@ void TextureMapperLayer::collectDamageSelf(TextureMapperPaintOptions& options, D
     // layer-level operations such as resizes, transformations, etc.
     const auto& clipBounds = options.textureMapper.clipBounds();
     if (m_damageInGlobalCoordinateSpace) {
-        for (const auto& rect : m_damageInGlobalCoordinateSpace->rects()) {
-            if (!rect.isEmpty())
-                damage.add(intersection(rect, clipBounds));
-        }
+        for (const auto& rect : *m_damageInGlobalCoordinateSpace)
+            damage.add(intersection(rect, clipBounds));
     }
 
     if (m_damageInLayerCoordinateSpace) {
-        for (const auto& rect : m_damageInLayerCoordinateSpace->rects()) {
-            if (!rect.isEmpty())
-                damage.add(intersection(transformRectFromLayerToGlobalCoordinateSpace(rect, transform, options), clipBounds));
-        }
+        for (const auto& rect : *m_damageInLayerCoordinateSpace)
+            damage.add(intersection(transformRectFromLayerToGlobalCoordinateSpace(rect, transform, options), clipBounds));
     }
 }
 
@@ -552,7 +560,10 @@ void TextureMapperLayer::collectDamageSelfChildrenFilterAndMask(TextureMapperPai
 
 void TextureMapperLayer::damageWholeLayer()
 {
-    ensureDamageInLayerCoordinateSpace().add(layerRect());
+    if (m_state.size.isEmpty())
+        return;
+
+    ensureDamageInLayerCoordinateSpace().makeFull();
 }
 
 void TextureMapperLayer::damageWholeLayerIncludingItsRectFromPreviousFrame()
@@ -716,7 +727,7 @@ bool TextureMapperLayer::isVisible() const
         return false;
     if (!m_state.contentsVisible && m_children.isEmpty())
         return false;
-    if (m_currentOpacity < 0.01)
+    if (m_currentOpacity < s_opacityVisibilityThreshold)
         return false;
     return true;
 }
@@ -1275,9 +1286,9 @@ void TextureMapperLayer::removeFromParent()
     if (m_parent) {
         size_t index = m_parent->m_children.find(this);
         ASSERT(index != notFound);
-        m_parent->m_children.remove(index);
+        m_parent->m_children.removeAt(index);
 #if ENABLE(DAMAGE_TRACKING)
-        if (m_parent->canInferDamage()) {
+        if (m_parent->m_damagePropagationEnabled) {
             collectDamageFromLayerAboutToBeRemoved(*this);
             if (m_damageInGlobalCoordinateSpace)
                 m_parent->ensureDamageInGlobalCoordinateSpace().add(*m_damageInGlobalCoordinateSpace);
@@ -1342,7 +1353,7 @@ void TextureMapperLayer::setBoundsOrigin(const FloatPoint& boundsOrigin)
 void TextureMapperLayer::setSize(const FloatSize& size)
 {
 #if ENABLE(DAMAGE_TRACKING)
-    if (canInferDamage() && m_state.size != size) {
+    if (m_damagePropagationEnabled && m_state.size != size) {
         m_state.size = size;
         damageWholeLayerIncludingItsRectFromPreviousFrame();
         return;
@@ -1424,7 +1435,7 @@ void TextureMapperLayer::setBackfaceVisibility(bool backfaceVisibility)
 void TextureMapperLayer::setOpacity(float opacity)
 {
 #if ENABLE(DAMAGE_TRACKING)
-    if (canInferDamage() && m_state.opacity != opacity)
+    if (m_damagePropagationEnabled && m_state.opacity != opacity)
         damageWholeLayer();
 #endif
     m_state.opacity = opacity;
@@ -1433,7 +1444,7 @@ void TextureMapperLayer::setOpacity(float opacity)
 void TextureMapperLayer::setSolidColor(const Color& color)
 {
 #if ENABLE(DAMAGE_TRACKING)
-    if (canInferDamage() && m_state.solidColor != color)
+    if (m_damagePropagationEnabled && m_state.solidColor != color)
         damageWholeLayer();
 #endif
     m_state.solidColor = color;
@@ -1500,6 +1511,13 @@ bool TextureMapperLayer::syncAnimations(MonotonicTime time)
     m_animations.apply(applicationResults, time);
 
     m_layerTransforms.localTransform = applicationResults.transform.value_or(m_state.transform);
+#if ENABLE(DAMAGE_TRACKING)
+    if (m_damagePropagationEnabled && m_currentOpacity != applicationResults.opacity.value_or(m_state.opacity)) {
+        damageWholeLayer();
+        if (m_currentOpacity >= s_opacityVisibilityThreshold && applicationResults.opacity.value_or(m_state.opacity) < s_opacityVisibilityThreshold)
+            m_collectDamageDespiteBeingInvisible = true;
+    }
+#endif
     m_currentOpacity = applicationResults.opacity.value_or(m_state.opacity);
     m_currentFilters = applicationResults.filters.value_or(m_state.filters);
 

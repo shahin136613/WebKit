@@ -394,7 +394,7 @@ static void* kvoContext = &kvoContext;
     self.popoverPresentationController.delegate = self;
 
     UINavigationItem *navigationItem = self.navigationItem;
-    navigationItem.title = extensionContext->protectedExtension()->displayName();
+    navigationItem.title = extensionContext->protectedExtension()->displayName().createNSString().get();
     navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(_dismissPopup)];
 
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(_viewControllerDismissalTransitionDidEnd:) name:UIPresentationControllerDismissalTransitionDidEndNotification object:nil];
@@ -461,7 +461,10 @@ static void* kvoContext = &kvoContext;
         [_popupWebView _clearOverrideLayoutParameters];
 
         if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            // FIXME: <rdar://155548417> ([ Build-Failure ] [ iOS26+ ] error: 'mainScreen' is deprecated: first deprecated in iOS 26.0)
             CGFloat widthOfDeviceInPortrait = CGRectGetWidth(UIScreen.mainScreen._referenceBounds);
+ALLOW_DEPRECATED_DECLARATIONS_END
 
             CGSize contentSize = self.preferredContentSize;
             contentSize.width = std::max(contentSize.width, widthOfDeviceInPortrait);
@@ -849,13 +852,13 @@ NSString *WebExtensionAction::popupWebViewInspectionName()
         if (RefPtr extensionContext = this->extensionContext())
             m_popupWebViewInspectionName = WEB_UI_FORMAT_CFSTRING("%@ — Extension Popup Page", "Label for an inspectable Web Extension popup page", extensionContext->protectedExtension()->displayShortName().createCFString().get());
     }
-    return m_popupWebViewInspectionName;
+    return m_popupWebViewInspectionName.createNSString().autorelease();
 }
 
 void WebExtensionAction::setPopupWebViewInspectionName(const String& name)
 {
     m_popupWebViewInspectionName = name;
-    m_popupWebView.get()._remoteInspectionNameOverride = name;
+    m_popupWebView.get()._remoteInspectionNameOverride = name.createNSString().get();
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -988,7 +991,7 @@ WKWebView *WebExtensionAction::popupWebView()
     m_popupWebView.get().navigationDelegate = m_popupWebViewDelegate.get();
     m_popupWebView.get().UIDelegate = m_popupWebViewDelegate.get();
     m_popupWebView.get().inspectable = extensionContext->isInspectable();
-    m_popupWebView.get().accessibilityLabel = extensionContext->protectedExtension()->displayName();
+    m_popupWebView.get().accessibilityLabel = extensionContext->protectedExtension()->displayName().createNSString().get();
     m_popupWebView.get()._remoteInspectionNameOverride = popupWebViewInspectionName();
 
 #if PLATFORM(MAC)
@@ -1009,7 +1012,7 @@ WKWebView *WebExtensionAction::popupWebView()
     extensionContext->addPopupPage(Ref { *m_popupWebView.get()._page.get() }, *this);
 
     auto url = URL { extensionContext->baseURL(), popupPath() };
-    [m_popupWebView loadRequest:[NSURLRequest requestWithURL:url]];
+    [m_popupWebView loadRequest:[NSURLRequest requestWithURL:url.createNSURL().get()]];
 
     return m_popupWebView.get();
 }

@@ -25,8 +25,6 @@
 
 #pragma once
 
-#include <variant>
-
 #if ENABLE(WEBASSEMBLY)
 
 #include "JITCompilation.h"
@@ -456,12 +454,12 @@ public:
 
     explicit StorageType(Type t)
     {
-        m_storageType = std::variant<Type, PackedType>(t);
+        m_storageType = Variant<Type, PackedType>(t);
     }
 
     explicit StorageType(PackedType t)
     {
-        m_storageType = std::variant<Type, PackedType>(t);
+        m_storageType = Variant<Type, PackedType>(t);
     }
 
     // Return a value type suitable for validating instruction arguments. Packed types cannot show up as value types and need to be unpacked to I32.
@@ -524,7 +522,7 @@ public:
     void dump(WTF::PrintStream& out) const;
 
 private:
-    std::variant<Type, PackedType> m_storageType;
+    Variant<Type, PackedType> m_storageType;
 
 };
 
@@ -746,7 +744,7 @@ enum class RTTKind : uint8_t {
 };
 
 class RTT_ALIGNMENT RTT final : public ThreadSafeRefCounted<RTT>, private TrailingArray<RTT, const RTT*> {
-    WTF_MAKE_FAST_COMPACT_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_COMPACT_ALLOCATED(RTT);
     WTF_MAKE_NONMOVABLE(RTT);
     using TrailingArrayType = TrailingArray<RTT, const RTT*>;
     friend TrailingArrayType;
@@ -828,7 +826,7 @@ public:
     Ref<const TypeDefinition> replacePlaceholders(TypeIndex) const;
     ALWAYS_INLINE const TypeDefinition& unroll() const
     {
-        if (UNLIKELY(is<Projection>()))
+        if (is<Projection>()) [[unlikely]]
             return unrollSlow();
         ASSERT(refCount() > 1); // TypeInformation registry + owner(s).
         return *this;
@@ -871,7 +869,7 @@ private:
 
     static Type substitute(Type, TypeIndex);
 
-    std::variant<FunctionSignature, StructType, ArrayType, RecursionGroup, Projection, Subtype> m_typeHeader;
+    Variant<FunctionSignature, StructType, ArrayType, RecursionGroup, Projection, Subtype> m_typeHeader;
     // Payload is stored here.
 };
 

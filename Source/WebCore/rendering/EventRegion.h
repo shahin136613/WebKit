@@ -64,11 +64,12 @@ public:
 
 #if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
     void uniteInteractionRegions(RenderObject&, const FloatRect&, const FloatSize&, const std::optional<AffineTransform>&);
-    bool shouldConsolidateInteractionRegion(RenderObject&, const IntRect&, const ElementIdentifier&);
+    bool shouldConsolidateInteractionRegion(RenderObject&, const IntRect&, const NodeIdentifier&);
     void convertGuardContainersToInterationIfNeeded(float minimumCornerRadius);
     void removeSuperfluousInteractionRegions();
     void shrinkWrapInteractionRegions();
     void copyInteractionRegionsToEventRegion(float minimumCornerRadius);
+    void reserveCapacityForInteractionRegions(size_t);
 #endif
 
 private:
@@ -76,13 +77,13 @@ private:
 
 #if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
     Vector<InteractionRegion> m_interactionRegions;
-    UncheckedKeyHashMap<IntRect, InteractionRegion::ContentHint> m_interactionRectsAndContentHints;
-    UncheckedKeyHashSet<IntRect> m_occlusionRects;
+    HashMap<IntRect, InteractionRegion::ContentHint> m_interactionRectsAndContentHints;
+    HashSet<IntRect> m_occlusionRects;
     enum class Inflated : bool { No, Yes };
-    UncheckedKeyHashMap<IntRect, Inflated> m_guardRects;
-    UncheckedKeyHashSet<ElementIdentifier> m_containerRemovalCandidates;
-    UncheckedKeyHashSet<ElementIdentifier> m_containersToRemove;
-    UncheckedKeyHashMap<ElementIdentifier, Vector<InteractionRegion>> m_discoveredRegionsByElement;
+    HashMap<IntRect, Inflated> m_guardRects;
+    HashSet<NodeIdentifier> m_containerRemovalCandidates;
+    HashSet<NodeIdentifier> m_containersToRemove;
+    HashMap<NodeIdentifier, Vector<InteractionRegion>> m_discoveredRegionsByElement;
 #endif
 };
 

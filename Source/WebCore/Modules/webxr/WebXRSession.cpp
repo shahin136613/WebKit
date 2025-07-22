@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020 Igalia S.L. All rights reserved.
- * Copyright (C) 2022-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2022-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,8 @@
 
 #if ENABLE(WEBXR)
 
-#include "Document.h"
+#include "ContextDestructionObserverInlines.h"
+#include "DocumentInlines.h"
 #include "EventNames.h"
 #include "JSDOMPromiseDeferred.h"
 #include "JSWebXRReferenceSpace.h"
@@ -111,11 +112,6 @@ XRVisibilityState WebXRSession::visibilityState() const
 const WebXRRenderState& WebXRSession::renderState() const
 {
     return *m_activeRenderState;
-}
-
-const WebXRInputSourceArray& WebXRSession::inputSources() const
-{
-    return m_inputSources;
 }
 
 // https://www.w3.org/TR/webxr/#dom-xrsession-enabledfeatures
@@ -430,6 +426,11 @@ void WebXRSession::didCompleteShutdown()
     queueTaskToDispatchEvent(*this, TaskSource::WebXR, WTFMove(event));
 }
 
+ScriptExecutionContext* WebXRSession::scriptExecutionContext() const
+{
+    return ActiveDOMObject::scriptExecutionContext();
+}
+
 // https://immersive-web.github.io/webxr/#dom-xrsession-end
 ExceptionOr<void> WebXRSession::end(EndPromise&& promise)
 {
@@ -677,7 +678,7 @@ void WebXRSession::onFrame(PlatformXR::FrameData&& frameData)
                     continue;
                 callback->setFiredOrCancelled();
                 //  6.7.Invoke the Web IDL callback function for entry, passing now and frame as the arguments
-                callback->handleEvent(now, frame.get());
+                callback->invoke(now, frame.get());
 
                 //  6.8.If an exception is thrown, report the exception.
             }
@@ -713,7 +714,7 @@ bool WebXRSession::posesCanBeReported(const Document& document) const
 {
     // 1. If session’s relevant global object is not the current global object, return false.
     RefPtr sessionDocument = downcast<Document>(scriptExecutionContext());
-    if (!sessionDocument || sessionDocument->domWindow() != document.domWindow())
+    if (!sessionDocument || sessionDocument->window() != document.window())
         return false;
 
     // 2. If session's visibilityState is "hidden", return false.

@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2007, 2009 Apple Inc.  All rights reserved.
- * Copyright (C) 2007 Collabora Ltd.  All rights reserved.
+ * Copyright (C) 2007, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2007 Collabora Ltd. All rights reserved.
  * Copyright (C) 2007 Alp Toker <alp@atoker.com>
  * Copyright (C) 2009 Gustavo Noronha Silva <gns@gnome.org>
  * Copyright (C) 2009, 2010, 2011, 2012, 2013, 2016, 2017, 2018, 2019, 2020, 2021 Igalia S.L
@@ -169,7 +169,7 @@ void MediaPlayerPrivateGStreamerMSE::pause()
     // the player, so without a playbackStateChanged notification here we would still observe an
     // active sleep disabler right after receiving the pause event on JS side.
     RefPtr player = m_player.get();
-    if (UNLIKELY(!player))
+    if (!player) [[unlikely]]
         return;
     player->playbackStateChanged();
 }
@@ -183,7 +183,7 @@ void MediaPlayerPrivateGStreamerMSE::checkPlayingConsistency()
 
     m_playbackStateChangedNotificationPending = false;
     RefPtr player = m_player.get();
-    if (UNLIKELY(!player))
+    if (!player) [[unlikely]]
         return;
 
     GstState state, pendingState;
@@ -207,7 +207,7 @@ void MediaPlayerPrivateGStreamerMSE::setShouldDisableSleep(bool shouldDisableSle
 
 MediaTime MediaPlayerPrivateGStreamerMSE::duration() const
 {
-    if (UNLIKELY(!m_pipeline || m_didErrorOccur))
+    if (!m_pipeline || m_didErrorOccur) [[unlikely]]
         return MediaTime();
 
     return m_mediaTimeDuration.isValid() ? m_mediaTimeDuration : MediaTime::zeroTime();
@@ -221,8 +221,9 @@ void MediaPlayerPrivateGStreamerMSE::seekToTarget(const SeekTarget& target)
     doSeek(target, m_playbackRate);
 }
 
-bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate)
+bool MediaPlayerPrivateGStreamerMSE::doSeek(const SeekTarget& target, float rate, bool isAsync)
 {
+    UNUSED_PARAM(isAsync);
     // This method should only be called outside of MediaPlayerPrivateGStreamerMSE by MediaPlayerPrivateGStreamer::setRate().
 
     // Note: An important difference between seek with WebKitMediaSrc and regular playback is that seeking before
@@ -561,7 +562,7 @@ MediaPlayer::SupportsType MediaPlayerPrivateGStreamerMSE::supportsType(const Med
 
 MediaTime MediaPlayerPrivateGStreamerMSE::maxTimeSeekable() const
 {
-    if (UNLIKELY(m_didErrorOccur))
+    if (m_didErrorOccur) [[unlikely]]
         return MediaTime::zeroTime();
 
     GST_DEBUG("maxTimeSeekable");

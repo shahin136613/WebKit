@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 Apple Inc.  All rights reserved.
+ * Copyright (C) 2005 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,9 +39,10 @@
 
 namespace WebCore {
 
-InsertTextCommand::InsertTextCommand(Ref<Document>&& document, const String& text, bool selectInsertedText, RebalanceType rebalanceType, EditAction editingAction)
+InsertTextCommand::InsertTextCommand(Ref<Document>&& document, const String& text, AllowPasswordEcho allowPasswordEcho, bool selectInsertedText, RebalanceType rebalanceType, EditAction editingAction)
     : CompositeEditCommand(WTFMove(document), editingAction)
     , m_text(text)
+    , m_allowPasswordEcho(allowPasswordEcho)
     , m_selectInsertedText(selectInsertedText)
     , m_rebalanceType(rebalanceType)
 {
@@ -94,7 +95,7 @@ bool InsertTextCommand::performTrivialReplace(const String& text, bool selectIns
     if (!endingSelection().isRange())
         return false;
 
-    if (text.contains([](UChar c) { return c == '\t' || c == ' ' || c == '\n'; }))
+    if (text.contains([](char16_t c) { return c == '\t' || c == ' ' || c == '\n'; }))
         return false;
 
     Position start = endingSelection().start();
@@ -208,7 +209,7 @@ void InsertTextCommand::doApply()
         RefPtr<Text> textNode = startPosition.containerText();
         const unsigned offset = startPosition.offsetInContainerNode();
 
-        insertTextIntoNode(*textNode, offset, m_text);
+        insertTextIntoNode(*textNode, offset, m_text, m_allowPasswordEcho);
         endPosition = Position(textNode.get(), offset + m_text.length());
         if (m_markerSupplier)
             m_markerSupplier->addMarkersToTextNode(*textNode, offset, m_text);

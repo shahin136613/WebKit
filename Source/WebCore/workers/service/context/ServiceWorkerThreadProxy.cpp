@@ -28,6 +28,7 @@
 
 #include "BadgeClient.h"
 #include "CacheStorageProvider.h"
+#include "DocumentInlines.h"
 #include "DocumentLoader.h"
 #include "EventLoop.h"
 #include "EventNames.h"
@@ -134,7 +135,7 @@ void ServiceWorkerThreadProxy::postTaskToLoader(ScriptExecutionContext::Task&& t
 
 void ServiceWorkerThreadProxy::postMessageToDebugger(const String& message)
 {
-    RunLoop::protectedMain()->dispatch([this, protectedThis = Ref { *this }, message = message.isolatedCopy()]() mutable {
+    RunLoop::mainSingleton().dispatch([this, protectedThis = Ref { *this }, message = message.isolatedCopy()]() mutable {
         // FIXME: Handle terminated case.
         m_inspectorProxy.sendMessageFromWorkerToFrontend(WTFMove(message));
     });
@@ -278,7 +279,7 @@ void ServiceWorkerThreadProxy::navigationPreloadFailed(SWServerConnectionIdentif
 
 void ServiceWorkerThreadProxy::removeFetch(SWServerConnectionIdentifier connectionIdentifier, FetchIdentifier fetchIdentifier)
 {
-    RELEASE_LOG(ServiceWorker, "ServiceWorkerThreadProxy::removeFetch %" PRIu64, fetchIdentifier.toUInt64());
+    RELEASE_LOG_FORWARDABLE(ServiceWorker, SERVICEWORKERTHREADPROXY_REMOVEFETCH, fetchIdentifier.toUInt64());
 
     postTaskForModeToWorkerOrWorkletGlobalScope([protectedThis = Ref { *this }, connectionIdentifier, fetchIdentifier] (auto& context) {
         downcast<ServiceWorkerGlobalScope>(context).removeFetchTask({ connectionIdentifier, fetchIdentifier });

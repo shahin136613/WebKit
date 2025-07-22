@@ -49,6 +49,7 @@
 #include "RenderCombineText.h"
 #include "RenderInline.h"
 #include "RenderLayer.h"
+#include "RenderObjectInlines.h"
 #include "RenderTextInlines.h"
 #include "RenderSVGInlineText.h"
 #include "RenderView.h"
@@ -147,19 +148,19 @@ void SecureTextTimer::fired()
     m_renderer.setText(m_renderer.text(), true /* forcing setting text as it may be masked later */);
 }
 
-static UncheckedKeyHashMap<SingleThreadWeakRef<const RenderText>, String>& originalTextMap()
+static HashMap<SingleThreadWeakRef<const RenderText>, String>& originalTextMap()
 {
-    static NeverDestroyed<UncheckedKeyHashMap<SingleThreadWeakRef<const RenderText>, String>> map;
+    static NeverDestroyed<HashMap<SingleThreadWeakRef<const RenderText>, String>> map;
     return map;
 }
 
-static UncheckedKeyHashMap<SingleThreadWeakRef<const RenderText>, SingleThreadWeakPtr<RenderInline>>& inlineWrapperForDisplayContentsMap()
+static HashMap<SingleThreadWeakRef<const RenderText>, SingleThreadWeakPtr<RenderInline>>& inlineWrapperForDisplayContentsMap()
 {
-    static NeverDestroyed<UncheckedKeyHashMap<SingleThreadWeakRef<const RenderText>, SingleThreadWeakPtr<RenderInline>>> map;
+    static NeverDestroyed<HashMap<SingleThreadWeakRef<const RenderText>, SingleThreadWeakPtr<RenderInline>>> map;
     return map;
 }
 
-static constexpr UChar convertNoBreakSpaceToSpace(UChar character)
+static constexpr char16_t convertNoBreakSpaceToSpace(char16_t character)
 {
     return character == noBreakSpace ? ' ' : character;
 }
@@ -171,7 +172,7 @@ static inline size_t capitalizeCharacter(String textContent, unsigned startChara
         return 0;
     }
 
-    auto capitalize = [&](const UChar* contentToCapitalize, size_t length) -> size_t {
+    auto capitalize = [&](const char16_t* contentToCapitalize, size_t length) -> size_t {
         if (length == 1) {
             if ((*contentToCapitalize >= 'A' && *contentToCapitalize <= 'Z') || *contentToCapitalize == ' ')
                 return 0;
@@ -182,7 +183,7 @@ static inline size_t capitalizeCharacter(String textContent, unsigned startChara
             }
         }
 
-        UChar capitalizedCharacter;
+        char16_t capitalizedCharacter;
         UErrorCode status = U_ZERO_ERROR;
         auto realLength = u_strToTitle(&capitalizedCharacter, 1, contentToCapitalize, length, nullptr, "", &status);
         if (U_SUCCESS(status) && realLength == 1) {
@@ -191,7 +192,7 @@ static inline size_t capitalizeCharacter(String textContent, unsigned startChara
         }
 
         // Decomposed ligatures may need more space.
-        std::span<UChar> capitalizedStringData;
+        std::span<char16_t> capitalizedStringData;
         auto capitalizedString = String::createUninitialized(realLength, capitalizedStringData);
         status = U_ZERO_ERROR;
         u_strToTitle(capitalizedStringData.data(), capitalizedStringData.size(), contentToCapitalize, length, nullptr, "", &status);
@@ -221,11 +222,11 @@ static inline size_t capitalizeCharacter(String textContent, unsigned startChara
 
 String capitalize(const String& string)
 {
-    Vector<UChar> previousCharacter(1, ' ');
+    Vector<char16_t> previousCharacter(1, ' ');
     return capitalize(string, previousCharacter);
 }
 
-String capitalize(const String& string, Vector<UChar> previousCharacter)
+String capitalize(const String& string, Vector<char16_t> previousCharacter)
 {
     int32_t length = string.length();
     int32_t previousCharacterLength = previousCharacter.size();
@@ -234,7 +235,7 @@ String capitalize(const String& string, Vector<UChar> previousCharacter)
     static_assert(String::MaxLength < std::numeric_limits<unsigned>::max(), "Must be able to add one without overflowing unsigned");
 
     // Replace NO BREAK SPACE with a normal spaces since ICU does not treat it as a word separator.
-    Vector<UChar> stringWithPrevious(previousCharacterLength + length);
+    Vector<char16_t> stringWithPrevious(previousCharacterLength + length);
     for (int32_t i = 0; i < previousCharacterLength; ++i)
         stringWithPrevious[i] = convertNoBreakSpaceToSpace(previousCharacter[i]);
     for (int32_t i = previousCharacterLength; i < length + previousCharacterLength; ++i)
@@ -433,7 +434,7 @@ void RenderText::styleDidChange(StyleDifference diff, const RenderStyle* oldStyl
     // We do have to schedule layouts, though, since a style change can force us to
     // need to relayout.
     if (diff == StyleDifference::Layout) {
-        setNeedsLayoutAndPrefWidthsRecalc();
+        setNeedsLayoutAndPreferredWidthsUpdate();
         m_knownToHaveNoOverflowAndNoFallbackFonts = false;
     }
 
@@ -458,7 +459,7 @@ void RenderText::styleDidChange(StyleDifference diff, const RenderStyle* oldStyl
         RenderText::setText(originalText(), true);
 
     // FIXME: First line change on the block comes in as equal on text.
-    auto needsLayoutBoxStyleUpdate = layoutBox() && (diff >= StyleDifference::Repaint || (&style() != &firstLineStyle()));
+    auto needsLayoutBoxStyleUpdate = layoutBox() && (diff >= StyleDifference::RecompositeLayer || (&style() != &firstLineStyle()));
     if (needsLayoutBoxStyleUpdate)
         LayoutIntegration::LineLayout::updateStyle(*this);
 
@@ -953,12 +954,12 @@ ALWAYS_INLINE float RenderText::widthFromCacheConsideringPossibleTrailingSpace(c
     });
 }
 
-inline bool isHangablePunctuationAtLineStart(UChar c)
+inline bool isHangablePunctuationAtLineStart(char16_t c)
 {
     return U_GET_GC_MASK(c) & (U_GC_PS_MASK | U_GC_PI_MASK | U_GC_PF_MASK);
 }
 
-inline bool isHangablePunctuationAtLineEnd(UChar c)
+inline bool isHangablePunctuationAtLineEnd(char16_t c)
 {
     return U_GET_GC_MASK(c) & (U_GC_PE_MASK | U_GC_PI_MASK | U_GC_PF_MASK);
 }
@@ -989,7 +990,7 @@ float RenderText::hangablePunctuationEndWidth(unsigned index) const
     return widthFromCache(style.fontCascade(), index, 1, 0, 0, 0, style);
 }
 
-bool RenderText::isHangableStopOrComma(UChar c)
+bool RenderText::isHangableStopOrComma(char16_t c)
 {
     return c == 0x002C || c == 0x002E || c == 0x060C || c == 0x06D4 || c == 0x3001
         || c == 0x3002 || c == 0xFF0C || c == 0xFF0E || c == 0xFE50 || c == 0xFE51
@@ -1033,7 +1034,7 @@ RenderText::Widths RenderText::trimmedPreferredWidths(float leadWidth, bool& str
     if (!collapseWhiteSpace)
         stripFrontSpaces = false;
 
-    if (m_hasTab || preferredLogicalWidthsDirty() || !m_minWidth || !m_maxWidth)
+    if (m_hasTab || needsPreferredLogicalWidthsUpdate() || !m_minWidth || !m_maxWidth)
         computePreferredLogicalWidths(leadWidth, !m_minWidth || !m_maxWidth);
 
     Widths widths;
@@ -1107,23 +1108,23 @@ RenderText::Widths RenderText::trimmedPreferredWidths(float leadWidth, bool& str
     return widths;
 }
 
-static inline bool isSpaceAccordingToStyle(UChar c, const RenderStyle& style)
+static inline bool isSpaceAccordingToStyle(char16_t c, const RenderStyle& style)
 {
     return c == ' ' || (c == noBreakSpace && style.nbspMode() == NBSPMode::Space);
 }
 
 float RenderText::minLogicalWidth() const
 {
-    if (preferredLogicalWidthsDirty() || !m_minWidth)
-        const_cast<RenderText*>(this)->computePreferredLogicalWidths(0, !preferredLogicalWidthsDirty());
+    if (needsPreferredLogicalWidthsUpdate() || !m_minWidth)
+        const_cast<RenderText*>(this)->computePreferredLogicalWidths(0, !needsPreferredLogicalWidthsUpdate());
 
     return *m_minWidth;
 }
 
 float RenderText::maxLogicalWidth() const
 {
-    if (preferredLogicalWidthsDirty() || !m_maxWidth)
-        const_cast<RenderText*>(this)->computePreferredLogicalWidths(0, !preferredLogicalWidthsDirty());
+    if (needsPreferredLogicalWidthsUpdate() || !m_maxWidth)
+        const_cast<RenderText*>(this)->computePreferredLogicalWidths(0, !needsPreferredLogicalWidthsUpdate());
 
     return *m_maxWidth;
 }
@@ -1231,7 +1232,7 @@ float RenderText::maxWordFragmentWidth(const RenderStyle& style, const FontCasca
 
 void RenderText::computePreferredLogicalWidths(float leadWidth, SingleThreadWeakHashSet<const Font>& fallbackFonts, GlyphOverflow& glyphOverflow, bool forcedMinMaxWidthComputation)
 {
-    ASSERT_UNUSED(forcedMinMaxWidthComputation, m_hasTab || preferredLogicalWidthsDirty() || forcedMinMaxWidthComputation || !m_knownToHaveNoOverflowAndNoFallbackFonts);
+    ASSERT_UNUSED(forcedMinMaxWidthComputation, m_hasTab || needsPreferredLogicalWidthsUpdate() || forcedMinMaxWidthComputation || !m_knownToHaveNoOverflowAndNoFallbackFonts);
 
     m_minWidth = 0;
     m_beginMinWidth = 0;
@@ -1292,7 +1293,7 @@ void RenderText::computePreferredLogicalWidths(float leadWidth, SingleThreadWeak
         && contentAnalysis == TextBreakIterator::ContentAnalysis::Mechanical;
 
     for (unsigned i = 0; i < length; i++) {
-        UChar c = string[i];
+        char16_t c = string[i];
 
         bool previousCharacterIsSpace = isSpace;
 
@@ -1339,7 +1340,7 @@ void RenderText::computePreferredLogicalWidths(float leadWidth, SingleThreadWeak
         bool betweenWords = true;
         unsigned j = i;
         while (c != '\n' && !isSpaceAccordingToStyle(c, style) && c != '\t' && c != zeroWidthSpace && (c != softHyphen || style.hyphens() == Hyphens::None)) {
-            UChar previousCharacter = c;
+            char16_t previousCharacter = c;
             j++;
             if (j == length)
                 break;
@@ -1454,7 +1455,7 @@ void RenderText::computePreferredLogicalWidths(float leadWidth, SingleThreadWeak
         m_endMinWidth = currMaxWidth;
     }
 
-    setPreferredLogicalWidthsDirty(false);
+    clearNeedsPreferredWidthsUpdate();
 }
 
 template<typename CharacterType> static inline bool containsOnlyCollapsibleWhitespace(std::span<const CharacterType> characters, const RenderStyle& style)
@@ -1544,7 +1545,7 @@ static inline bool isInlineFlowOrEmptyText(const RenderObject& renderer)
     return textRenderer && textRenderer->text().isEmpty();
 }
 
-Vector<UChar> RenderText::previousCharacter() const
+Vector<char16_t> RenderText::previousCharacter() const
 {
     const RenderObject* previousText = this;
     while ((previousText = previousText->previousInPreOrder())) {
@@ -1554,7 +1555,7 @@ Vector<UChar> RenderText::previousCharacter() const
             break;
     }
     auto* renderText = dynamicDowncast<RenderText>(previousText);
-    Vector<UChar> previous;
+    Vector<char16_t> previous;
     if (!renderText)
         previous.append(' ');
     else {
@@ -1585,7 +1586,7 @@ Vector<UChar> RenderText::previousCharacter() const
 static String convertToFullSizeKana(const String& string)
 {
     // https://www.w3.org/TR/css-text-3/#small-kana
-    static constexpr std::pair<char32_t, UChar> kanasMap[] = {
+    static constexpr std::pair<char32_t, char16_t> kanasMap[] = {
         { 0x3041, 0x3042 },
         { 0x3043, 0x3044 },
         { 0x3045, 0x3046 },
@@ -1672,11 +1673,11 @@ static String convertToFullSizeKana(const String& string)
 
 String applyTextTransform(const RenderStyle& style, const String& text)
 {
-    Vector<UChar> previousCharacter(1, ' ');
+    Vector<char16_t> previousCharacter(1, ' ');
     return applyTextTransform(style, text, previousCharacter);
 }
 
-String applyTextTransform(const RenderStyle& style, const String& text, Vector<UChar> previousCharacter)
+String applyTextTransform(const RenderStyle& style, const String& text, Vector<char16_t> previousCharacter)
 {
     auto transform = style.textTransform();
 
@@ -1758,7 +1759,7 @@ void RenderText::setRenderedText(const String& newText)
     }
 }
 
-void RenderText::secureText(UChar maskingCharacter)
+void RenderText::secureText(char16_t maskingCharacter)
 {
     // This hides the text by replacing all the characters with the masking character.
     // Offsets within the hidden text have to match offsets within the original text
@@ -1770,7 +1771,7 @@ void RenderText::secureText(UChar maskingCharacter)
     if (!length)
         return;
 
-    UChar characterToReveal = 0;
+    char16_t characterToReveal = 0;
     unsigned revealedCharactersOffset = 0;
 
     if (m_hasSecureTextTimer) {
@@ -1783,7 +1784,7 @@ void RenderText::secureText(UChar maskingCharacter)
         }
     }
 
-    std::span<UChar> characters;
+    std::span<char16_t> characters;
     m_text = String::createUninitialized(length, characters);
 
     for (unsigned i = 0; i < length; ++i)
@@ -1792,7 +1793,7 @@ void RenderText::secureText(UChar maskingCharacter)
         characters[revealedCharactersOffset] = characterToReveal;
 }
 
-static void invalidateLineLayoutPathOnContentChangeIfNeeded(RenderText& renderer, size_t offset, int delta)
+static void invalidateLineLayoutPathOnContentChangeIfNeeded(RenderText& renderer, std::optional<size_t> offset, size_t oldLength)
 {
     auto* container = LayoutIntegration::LineLayout::blockContainer(renderer);
     if (!container)
@@ -1806,7 +1807,7 @@ static void invalidateLineLayoutPathOnContentChangeIfNeeded(RenderText& renderer
         container->invalidateLineLayoutPath(RenderBlockFlow::InvalidationReason::ContentChange);
         return;
     }
-    if (!inlineLayout->updateTextContent(renderer, offset, delta))
+    if (!inlineLayout->updateTextContent(renderer, offset, oldLength))
         container->invalidateLineLayoutPath(RenderBlockFlow::InvalidationReason::ContentChange);
 }
 
@@ -1825,7 +1826,7 @@ void RenderText::setTextInternal(const String& text, bool force)
 
     setRenderedText(text);
 
-    setNeedsLayoutAndPrefWidthsRecalc();
+    setNeedsLayoutAndPreferredWidthsUpdate();
     m_knownToHaveNoOverflowAndNoFallbackFonts = false;
 
     if (AXObjectCache* cache = document().existingAXObjectCache())
@@ -1837,7 +1838,7 @@ void RenderText::setText(const String& newContent, bool force)
     auto isDifferent = newContent != text();
     setTextInternal(newContent, force);
     if (isDifferent || force)
-        invalidateLineLayoutPathOnContentChangeIfNeeded(*this, 0, text().length());
+        invalidateLineLayoutPathOnContentChangeIfNeeded(*this, { }, { });
 }
 
 void RenderText::setTextWithOffset(const String& newText, unsigned offset)
@@ -1845,9 +1846,9 @@ void RenderText::setTextWithOffset(const String& newText, unsigned offset)
     if (text() == newText)
         return;
 
-    int delta = newText.length() - text().length();
+    size_t oldLength = text().length();
     setTextInternal(newText, false);
-    invalidateLineLayoutPathOnContentChangeIfNeeded(*this, offset, delta);
+    invalidateLineLayoutPathOnContentChangeIfNeeded(*this, offset, oldLength);
 }
 
 String RenderText::textWithoutConvertingBackslashToYenSymbol() const
@@ -1891,7 +1892,7 @@ float RenderText::width(unsigned from, unsigned length, const FontCascade& fontC
         if (!style.preserveNewline() && !from && length == text().length() && (!glyphOverflow || !glyphOverflow->computeBounds)) {
             if (fallbackFonts) {
                 ASSERT(glyphOverflow);
-                if (preferredLogicalWidthsDirty() || !m_knownToHaveNoOverflowAndNoFallbackFonts) {
+                if (needsPreferredLogicalWidthsUpdate() || !m_knownToHaveNoOverflowAndNoFallbackFonts) {
                     const_cast<RenderText*>(this)->computePreferredLogicalWidths(0, *fallbackFonts, *glyphOverflow);
                     if (fallbackFonts->isEmptyIgnoringNullReferences() && !glyphOverflow->left && !glyphOverflow->right && !glyphOverflow->top && !glyphOverflow->bottom)
                         m_knownToHaveNoOverflowAndNoFallbackFonts = true;
@@ -2161,7 +2162,7 @@ void RenderText::setInlineWrapperForDisplayContents(RenderInline* wrapper)
 std::optional<bool> RenderText::emphasisMarkExistsAndIsAbove(const RenderText& renderer, const RenderStyle& style)
 {
     // This function returns true if there are text emphasis marks and they are suppressed by ruby text.
-    if (style.textEmphasisMark() == TextEmphasisMark::None)
+    if (style.textEmphasisStyle().isNone())
         return std::nullopt;
 
     auto emphasisPosition = style.textEmphasisPosition();

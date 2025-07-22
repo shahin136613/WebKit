@@ -33,11 +33,12 @@
 #include "ColorInputType.h"
 
 #include "AXObjectCache.h"
-#include "CSSPropertyParserConsumer+Color.h"
+#include "CSSPropertyParserConsumer+ColorInlines.h"
 #include "Chrome.h"
 #include "Color.h"
 #include "ColorSerialization.h"
 #include "ColorTypes.h"
+#include "ContainerNodeInlines.h"
 #include "ElementRareData.h"
 #include "Event.h"
 #include "HTMLDataListElement.h"
@@ -61,12 +62,6 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(ColorInputType);
 
 using namespace HTMLNames;
 
-using LazySlowPathColorParsingParameters = std::tuple<
-    CSSPropertyParserHelpers::CSSColorParsingOptions,
-    CSS::PlatformColorResolutionState,
-    std::optional<CSS::PlatformColorResolutionDelegate>
->;
-
 // https://html.spec.whatwg.org/multipage/infrastructure.html#valid-simple-colour
 static bool isValidSimpleColor(StringView string)
 {
@@ -89,34 +84,28 @@ static std::optional<SRGBA<uint8_t>> parseSimpleColorValue(StringView string)
     return { { toASCIIHexValue(string[1], string[2]), toASCIIHexValue(string[3], string[4]), toASCIIHexValue(string[5], string[6]) } };
 }
 
-static LazySlowPathColorParsingParameters colorParsingParameters()
-{
-    return {
-        CSSPropertyParserHelpers::CSSColorParsingOptions {
-            .allowedColorTypes = { CSS::ColorType::Absolute, CSS::ColorType::Current, CSS::ColorType::System }
-        },
-        CSS::PlatformColorResolutionState {
-            .resolvedCurrentColor = Color::black
-        },
-        std::nullopt
-    };
-}
-
 static std::optional<Color> parseColorValue(StringView string, HTMLInputElement& context)
 {
     if (context.colorSpace().isNull())
         return parseSimpleColorValue(string);
-
-    auto parserContext = context.protectedDocument()->cssParserContext();
+    using namespace CSSPropertyParserHelpers;
+    Ref document = context.document();
+    auto parserContext = document->cssParserContext();
     parserContext.mode = HTMLStandardMode;
-    auto color = CSSPropertyParserHelpers::parseColorRaw(string.toString(), parserContext, [] {
-        return colorParsingParameters();
-    });
+    auto colorString = string.toString();
+    auto color = parseColorRawSimple(colorString, parserContext);
+    if (color.isValid())
+        return color;
 
-    if (!color.isValid())
-        return { };
+    CSSColorParsingOptions options;
+    CSS::PlatformColorResolutionState state {
+        .resolvedCurrentColor = Color::black
+    };
+    color = parseColorRawGeneral(colorString, parserContext, document, options, state);
+    if (color.isValid())
+        return color;
 
-    return color;
+    return { };
 }
 
 static String serializeColorValue(Color input, HTMLInputElement& context)
@@ -153,7 +142,7 @@ bool ColorInputType::isMouseFocusable() const
     return protectedElement()->isTextFormControlFocusable();
 }
 
-bool ColorInputType::isKeyboardFocusable(KeyboardEvent*) const
+bool ColorInputType::isKeyboardFocusable(const FocusEventData&) const
 {
     ASSERT(element());
 #if PLATFORM(IOS_FAMILY)
@@ -178,13 +167,13 @@ bool ColorInputType::supportsRequired() const
     return false;
 }
 
-String ColorInputType::fallbackValue() const
+ValueOrReference<String> ColorInputType::fallbackValue() const
 {
     ASSERT(element());
     return serializeColorValue(Color::black, *protectedElement());
 }
 
-String ColorInputType::sanitizeValue(const String& proposedValue) const
+ValueOrReference<String> ColorInputType::sanitizeValue(const String& proposedValue LIFETIME_BOUND) const
 {
     ASSERT(element());
     Ref input = *element();
@@ -200,7 +189,7 @@ Color ColorInputType::valueAsColor() const
 {
     ASSERT(element());
     Ref input = *element();
-    auto color = parseColorValue(input->value(), input);
+    auto color = parseColorValue(input->value().get(), input);
     ASSERT(!!color);
     // FIXME: This is a speculative fix for rdar://144872437.
     if (!color)
@@ -269,7 +258,7 @@ void ColorInputType::handleDOMActivateEvent(Event& event)
     event.setDefaultHandled();
 }
 
-void ColorInputType::showPicker() 
+void ColorInputType::showPicker()
 {
     if (Chrome* chrome = this->chrome()) {
         if (RefPtr chooser = m_chooser)
@@ -328,8 +317,8 @@ void ColorInputType::didChooseColor(const Color& color)
 void ColorInputType::didEndChooser()
 {
     m_chooser = nullptr;
-    if (element()->renderer())
-        element()->renderer()->repaint();
+    if (CheckedPtr renderer = protectedElement()->renderer())
+        renderer->repaint();
 }
 
 void ColorInputType::endColorChooser()
@@ -361,9 +350,11 @@ HTMLElement* ColorInputType::shadowColorSwatch() const
 IntRect ColorInputType::elementRectRelativeToRootView() const
 {
     ASSERT(element());
-    if (!element()->renderer())
+    Ref element = *this->element();
+    CheckedPtr renderer = element->renderer();
+    if (!renderer)
         return IntRect();
-    return element()->protectedDocument()->protectedView()->contentsToRootView(element()->renderer()->absoluteBoundingBoxRect());
+    return element->protectedDocument()->protectedView()->contentsToRootView(renderer->absoluteBoundingBoxRect());
 }
 
 bool ColorInputType::supportsAlpha() const

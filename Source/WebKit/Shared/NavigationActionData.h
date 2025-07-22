@@ -45,7 +45,7 @@
 namespace WebKit {
 
 struct NavigationActionData {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(NavigationActionData);
 
     WebCore::NavigationType navigationType { WebCore::NavigationType::Other };
     OptionSet<WebEventModifier> modifiers;
@@ -65,6 +65,7 @@ struct NavigationActionData {
     bool hasOpener { false };
     bool isPerformingHTTPFallback { false };
     bool isInitialFrameSrcLoad { false };
+    bool isContentRuleListRedirect { false };
     String openedMainFrameName;
     WebCore::SecurityOriginData requesterOrigin;
     WebCore::SecurityOriginData requesterTopOrigin;
@@ -87,6 +88,7 @@ struct NavigationActionData {
     std::optional<WebCore::NavigationIdentifier> navigationID;
     WebCore::ResourceRequest originalRequest;
     WebCore::ResourceRequest request;
+    String invalidURLString;
 };
 
 }

@@ -81,7 +81,7 @@ ServiceWorkerSoftUpdateLoader::ServiceWorkerSoftUpdateLoader(NetworkSession& ses
                 if (!lastModified.isEmpty())
                     request.setHTTPHeaderField(HTTPHeaderName::IfModifiedSince, lastModified);
             }
-            loadFromNetwork(*m_session, WTFMove(request));
+            loadFromNetwork(CheckedRef { *m_session }.get(), WTFMove(request));
         });
         return;
     }
@@ -112,7 +112,7 @@ void ServiceWorkerSoftUpdateLoader::loadWithCacheEntry(NetworkCache::Entry& entr
     }
 
     if (RefPtr buffer = entry.buffer())
-        didReceiveBuffer(*buffer, 0);
+        didReceiveBuffer(*buffer);
     didFinishLoading({ });
 }
 
@@ -177,7 +177,7 @@ ResourceError ServiceWorkerSoftUpdateLoader::processResponse(const ResourceRespo
     return { };
 }
 
-void ServiceWorkerSoftUpdateLoader::didReceiveBuffer(const WebCore::FragmentedSharedBuffer& buffer, uint64_t reportedEncodedDataLength)
+void ServiceWorkerSoftUpdateLoader::didReceiveBuffer(const WebCore::FragmentedSharedBuffer& buffer)
 {
     if (!m_decoder) {
         if (!m_responseEncoding.isEmpty())

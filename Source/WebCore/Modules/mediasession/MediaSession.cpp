@@ -155,7 +155,7 @@ MediaSession::MediaSession(Navigator& navigator)
     , m_coordinator(MediaSessionCoordinator::create(navigator.scriptExecutionContext()))
 #endif
 {
-    m_logger = &Document::sharedLogger();
+    m_logger = Document::sharedLogger();
     m_logIdentifier = nextLogIdentifier();
 
 #if ENABLE(MEDIA_SESSION_COORDINATOR)
@@ -331,7 +331,7 @@ bool MediaSession::callActionHandler(const MediaSessionActionDetails& actionDeta
         std::optional<UserGestureIndicator> maybeGestureIndicator;
         if (triggerGestureIndicator == TriggerGestureIndicator::Yes)
             maybeGestureIndicator.emplace(IsProcessingUserGesture::Yes, document());
-        handler->handleEvent(actionDetails);
+        handler->invoke(actionDetails);
         return true;
     }
     auto element = activeMediaElement();

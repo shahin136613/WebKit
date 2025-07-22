@@ -41,6 +41,7 @@
 #import <wtf/MachSendRight.h>
 #import <wtf/MathExtras.h>
 #import <wtf/TZoneMallocInlines.h>
+#import <wtf/cf/TypeCastsCF.h>
 #import <wtf/cocoa/TypeCastsCocoa.h>
 #import <wtf/text/TextStream.h>
 
@@ -410,9 +411,16 @@ RetainPtr<id> IOSurface::asCAIOSurfaceLayerContents() const
     // CAIOSurface keeps most of the server-side rendering ojects alive,
     // but doesn't mark the IOSurface as in-use. We can retain it for efficiency
     // without breaking use-counting.
-    if (PAL::canLoad_QuartzCore_CAIOSurfaceCreate())
-        return bridge_id_cast(adoptCF(CAIOSurfaceCreate(m_surface.get())));
-    return nil;
+    if (PAL::canLoad_QuartzCore_CAIOSurfaceCreate()) {
+        auto result = adoptCF(CAIOSurfaceCreate(m_surface.get()));
+#if HAVE(SUPPORT_HDR_DISPLAY)
+        // Force CA to reload the headroom, since this doesn't happen automatically.
+        if (m_contentEDRHeadroom && *m_contentEDRHeadroom != 1 && PAL::canLoad_QuartzCore_CAIOSurfaceReloadColorAttributes())
+            CAIOSurfaceReloadColorAttributes(result.get());
+#endif
+        return bridge_id_cast(result);
+    }
+    return asLayerContents();
 }
 
 RetainPtr<CGImageRef> IOSurface::createImage(CGContextRef context)
@@ -423,6 +431,8 @@ RetainPtr<CGImageRef> IOSurface::createImage(CGContextRef context)
 
 RetainPtr<CGImageRef> IOSurface::sinkIntoImage(std::unique_ptr<IOSurface> surface, RetainPtr<CGContextRef> context)
 {
+    if (!context)
+        context = surface->createPlatformContext();
     ASSERT(CGIOSurfaceContextGetSurface(context.get()) == surface->m_surface);
     UNUSED_PARAM(surface);
     return adoptCF(CGIOSurfaceContextCreateImageReference(context.get()));
@@ -487,9 +497,11 @@ RetainPtr<CGContextRef> IOSurface::createCompatibleBitmap(unsigned width, unsign
     return adoptCF(CGBitmapContextCreate(NULL, width, height, configuration.bitsPerComponent, bytesPerRow, m_colorSpace->platformColorSpace(), configuration.bitmapInfo));
 }
 
-RetainPtr<CGContextRef> IOSurface::createPlatformContext(PlatformDisplayID displayID)
+RetainPtr<CGContextRef> IOSurface::createPlatformContext(PlatformDisplayID displayID, std::optional<CGImageAlphaInfo> overrideAlphaInfo)
 {
     auto configuration = bitmapConfiguration();
+    if (overrideAlphaInfo)
+        configuration.bitmapInfo = (configuration.bitmapInfo & ~kCGBitmapAlphaInfoMask) | *overrideAlphaInfo;
     auto bitsPerPixel = configuration.bitsPerComponent * 4;
 
     ensureColorSpace();
@@ -684,6 +696,30 @@ void IOSurface::ensureColorSpace()
 
     m_colorSpace = surfaceColorSpace().value_or(DestinationColorSpace::SRGB());
 }
+
+#if HAVE(SUPPORT_HDR_DISPLAY)
+void IOSurface::setContentEDRHeadroom(float headroom)
+{
+    if (m_contentEDRHeadroom && headroom == m_contentEDRHeadroom)
+        return;
+
+    LOG_WITH_STREAM(HDR, stream << "IOSurface::setContentEDRHeadroom " << this << " " << headroom);
+    m_contentEDRHeadroom = headroom;
+    IOSurfaceSetValue(m_surface.get(), kIOSurfaceContentHeadroom, @(headroom));
+}
+
+std::optional<float> IOSurface::contentEDRHeadroom() const
+{
+    return m_contentEDRHeadroom;
+}
+
+void IOSurface::loadContentEDRHeadroom()
+{
+    m_contentEDRHeadroom = 1;
+    if (auto valueNumber = dynamic_cf_cast<CFNumberRef>(adoptCF(IOSurfaceCopyValue(m_surface.get(), kIOSurfaceContentHeadroom))))
+        CFNumberGetValue(valueNumber.get(), kCFNumberFloat32Type, &m_contentEDRHeadroom.value());
+}
+#endif
 
 std::optional<DestinationColorSpace> IOSurface::surfaceColorSpace() const
 {

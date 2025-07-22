@@ -62,7 +62,7 @@ struct ViewportAttributes {
 };
 
 struct ViewportArguments {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(ViewportArguments);
 
     enum class Type : uint8_t {
         // These are ordered in increasing importance.
@@ -149,7 +149,7 @@ WEBCORE_EXPORT float computeMinimumScaleFactorForContentContained(const Viewport
 
 typedef Function<void(ViewportErrorCode, const String&)> ViewportErrorHandler;
 void setViewportFeature(ViewportArguments&, Document&, StringView key, StringView value);
-WEBCORE_EXPORT void setViewportFeature(ViewportArguments&, StringView key, StringView value, const ViewportErrorHandler&);
+WEBCORE_EXPORT void setViewportFeature(ViewportArguments&, StringView key, StringView value, NOESCAPE const ViewportErrorHandler&);
 
 WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const ViewportArguments&);
 

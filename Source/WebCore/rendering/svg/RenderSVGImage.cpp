@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 Alexander Kellett <lypanov@kde.org>
- * Copyright (C) 2006 Apple Inc.
+ * Copyright (C) 2006 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2007, 2008, 2009 Rob Buis <buis@kde.org>
  * Copyright (C) 2009 Google, Inc.
@@ -40,6 +40,7 @@
 #include "RenderElementInlines.h"
 #include "RenderImageResource.h"
 #include "RenderLayer.h"
+#include "RenderObjectInlines.h"
 #include "RenderSVGModelObjectInlines.h"
 #include "SVGElementTypeHelpers.h"
 #include "SVGImageElement.h"
@@ -54,18 +55,13 @@ WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderSVGImage);
 
 RenderSVGImage::RenderSVGImage(SVGImageElement& element, RenderStyle&& style)
     : RenderSVGModelObject(Type::SVGImage, element, WTFMove(style))
-    , m_imageResource(makeUnique<RenderImageResource>())
+    , m_imageResource(makeUniqueRef<RenderImageResource>())
 {
     ASSERT(isRenderSVGImage());
     imageResource().initialize(*this);
 }
 
 RenderSVGImage::~RenderSVGImage() = default;
-
-CheckedRef<RenderImageResource> RenderSVGImage::checkedImageResource() const
-{
-    return *m_imageResource;
-}
 
 void RenderSVGImage::willBeDestroyed()
 {
@@ -92,8 +88,8 @@ FloatRect RenderSVGImage::calculateObjectBoundingBox() const
     Ref imageElement = this->imageElement();
     SVGLengthContext lengthContext(imageElement.ptr());
 
-    Length width = style().width();
-    Length height = style().height();
+    auto& width = style().width();
+    auto& height = style().height();
 
     float concreteWidth;
     if (!width.isAuto())
@@ -181,7 +177,7 @@ ImageDrawResult RenderSVGImage::paintIntoRect(PaintInfo& paintInfo, const FloatR
         CompositeOperator::SourceOver,
         DecodingMode::Synchronous,
         imageOrientation(),
-        ImageQualityController::chooseInterpolationQualityForSVG(paintInfo.context(), this, *image),
+        ImageQualityController::chooseInterpolationQualityForSVG(paintInfo.context(), *this, *image),
         settings().imageSubsamplingEnabled() ? AllowImageSubsampling::Yes : AllowImageSubsampling::No,
         settings().showDebugBorders() ? ShowDebugBackground::Yes : ShowDebugBackground::No
     };

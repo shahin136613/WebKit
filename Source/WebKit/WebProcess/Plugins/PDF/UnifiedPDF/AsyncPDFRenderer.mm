@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2024-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,6 +36,7 @@
 #include <WebCore/GeometryUtilities.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/ImageBuffer.h>
+#include <WebCore/NativeImage.h>
 #include <wtf/NumberOfCores.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/TextStream.h>
@@ -87,7 +88,7 @@ void AsyncPDFRenderer::teardown()
 {
     for (auto& keyValuePair : m_layerIDtoLayerMap) {
         auto& layer = keyValuePair.value;
-        if (auto* tiledBacking = layer->tiledBacking())
+        if (CheckedPtr tiledBacking = layer->tiledBacking())
             tiledBacking->setClient(nullptr);
     }
 
@@ -109,7 +110,7 @@ void AsyncPDFRenderer::releaseMemory()
 
     for (Ref layer : m_layerIDtoLayerMap.values()) {
         // Ideally we'd be able to make the ImageBuffer memory volatile which would eliminate the need for this callback: webkit.org/b/274878
-        if (auto* tiledBacking = layer->tiledBacking())
+        if (CheckedPtr tiledBacking = layer->tiledBacking())
             removePagePreviewsOutsideCoverageRect(tiledBacking->coverageRect(), presentationController->rowForLayer(layer.ptr()));
     }
 
@@ -118,7 +119,7 @@ void AsyncPDFRenderer::releaseMemory()
 
 void AsyncPDFRenderer::startTrackingLayer(GraphicsLayer& layer)
 {
-    auto* tiledBacking = layer.tiledBacking();
+    CheckedPtr tiledBacking = layer.tiledBacking();
     if (!tiledBacking)
         return;
     tiledBacking->setClient(this);
@@ -128,7 +129,7 @@ void AsyncPDFRenderer::startTrackingLayer(GraphicsLayer& layer)
 
 void AsyncPDFRenderer::stopTrackingLayer(GraphicsLayer& layer)
 {
-    auto* tiledBacking = layer.tiledBacking();
+    CheckedPtr tiledBacking = layer.tiledBacking();
     if (!tiledBacking)
         return;
     auto gridIdentifier = tiledBacking->primaryGridIdentifier();
@@ -167,10 +168,11 @@ static RefPtr<NativeImage> renderPDFPagePreview(RetainPtr<PDFDocument>&& pdfDocu
         // from this page's drawing origin.
         context.translate(destinationRect.minXMaxYCorner());
         context.scale({ 1, -1 });
-        CGContextSetShouldSubpixelQuantizeFonts(context.platformContext(), false);
-        CGContextSetAllowsFontSubpixelPositioning(context.platformContext(), true);
+        RetainPtr platformContext = context.platformContext();
+        CGContextSetShouldSubpixelQuantizeFonts(platformContext.get(), false);
+        CGContextSetAllowsFontSubpixelPositioning(platformContext.get(), true);
         LOG_WITH_STREAM(PDFAsyncRendering, stream << "renderPDFPagePreview - page:" << request.pageIndex);
-        [pdfPage drawWithBox:kPDFDisplayBoxCropBox toContext:context.platformContext()];
+        [pdfPage drawWithBox:kPDFDisplayBoxCropBox toContext:platformContext.get()];
     }
     return ImageBuffer::sinkIntoNativeImage(WTFMove(imageBuffer));
 }
@@ -309,19 +311,16 @@ void AsyncPDFRenderer::willRepaintAllTiles(TiledBacking&, TileGridIdentifier)
     clearRequestsAndCachedTiles();
 }
 
-void AsyncPDFRenderer::coverageRectDidChange(TiledBacking& tiledBacking, const FloatRect& coverageRect)
+void AsyncPDFRenderer::ensurePreviewsForCurrentPageCoverage()
 {
+    if (!m_currentPageCoverage)
+        return;
+
     RefPtr presentationController = m_presentationController.get();
     if (!presentationController)
         return;
 
-    std::optional<PDFLayoutRow> layoutRow;
-    RefPtr<GraphicsLayer> layer = layerForTileGrid(tiledBacking.primaryGridIdentifier());
-    if (layer)
-        layoutRow = presentationController->rowForLayer(layer.get());
-
-    auto pageCoverage = presentationController->pageCoverageForContentsRect(coverageRect, layoutRow);
-
+    auto pageCoverage = *m_currentPageCoverage;
     auto pagePreviewScale = presentationController->scaleForPagePreviews();
 
     for (auto& pageInfo : pageCoverage) {
@@ -331,10 +330,27 @@ void AsyncPDFRenderer::coverageRectDidChange(TiledBacking& tiledBacking, const F
         generatePreviewImageForPage(pageInfo.pageIndex, pagePreviewScale);
     }
 
+    LOG_WITH_STREAM(PDFAsyncRendering, stream << "AsyncPDFRenderer::ensurePreviewImagesForPageCoverage " << pageCoverage << " - preview scale " << pagePreviewScale << " - have " << m_pagePreviews.size() << " page previews and " << m_pendingPagePreviews.size() << " enqueued");
+}
+
+void AsyncPDFRenderer::coverageRectDidChange(TiledBacking& tiledBacking, const FloatRect& coverageRect)
+{
+    RefPtr presentationController = m_presentationController.get();
+    if (!presentationController)
+        return;
+
+    std::optional<PDFLayoutRow> layoutRow;
+    RefPtr layer = layerForTileGrid(tiledBacking.primaryGridIdentifier());
+    if (layer)
+        layoutRow = presentationController->rowForLayer(layer.get());
+
+    m_currentPageCoverage = presentationController->pageCoverageForContentsRect(coverageRect, layoutRow);
+    ensurePreviewsForCurrentPageCoverage();
+
     if (!presentationController->pluginShouldCachePagePreviews())
         removePagePreviewsOutsideCoverageRect(coverageRect, layoutRow);
 
-    LOG_WITH_STREAM(PDFAsyncRendering, stream << "AsyncPDFRenderer::coverageRectDidChange " << coverageRect << " " << pageCoverage << " - preview scale " << pagePreviewScale << " - have " << m_pagePreviews.size() << " page previews and " << m_pendingPagePreviews.size() << " enqueued");
+    LOG_WITH_STREAM(PDFAsyncRendering, stream << "AsyncPDFRenderer::coverageRectDidChange " << coverageRect);
 }
 
 void AsyncPDFRenderer::removePagePreviewsOutsideCoverageRect(const FloatRect& coverageRect, const std::optional<PDFLayoutRow>& layoutRow)
@@ -463,11 +479,10 @@ void AsyncPDFRenderer::willRemoveGrid(TiledBacking&, TileGridIdentifier gridIden
 
 void AsyncPDFRenderer::clearRequestsAndCachedTiles()
 {
-    LOG_WITH_STREAM(PDFAsyncRendering, stream << "\nAsyncPDFRenderer::clearRequestsAndCachedTiles - have " << m_rendereredTiles.size() << " rendered tiles");
+    LOG_WITH_STREAM(PDFAsyncRendering, stream << "\nAsyncPDFRenderer::clearRequestsAndCachedTiles - have " << m_pendingTileRenders.size() << " pending tile renders");
 
     m_pendingTileRenderOrder.clear();
     m_pendingTileRenders.clear();
-//    m_rendereredTiles.clear();
 }
 
 AffineTransform AsyncPDFRenderer::tileToPaintingTransform(float tilingScaleFactor)
@@ -542,7 +557,7 @@ TileRenderInfo AsyncPDFRenderer::renderInfoForTile(const TiledBacking& tiledBack
     return TileRenderInfo { tileRect, renderRect, WTFMove(background), pageCoverage, m_showDebugBorders };
 }
 
-static void renderPDFTile(PDFDocument* pdfDocument, const TileRenderInfo& renderInfo, GraphicsContext& context)
+static void renderPDFTile(PDFDocument *pdfDocument, const TileRenderInfo& renderInfo, GraphicsContext& context)
 {
     context.translate(-renderInfo.tileRect.location());
     if (renderInfo.tileRect != renderInfo.renderRect)
@@ -569,11 +584,11 @@ static void renderPDFTile(PDFDocument* pdfDocument, const TileRenderInfo& render
         context.scale({ 1, -1 });
 
         LOG_WITH_STREAM(PDFAsyncRendering, stream << "renderPDFTile renderInfo:" << renderInfo << ", PDF page:" << pageInfo.pageIndex << " destinationRect:" << destinationRect);
-        [pdfPage drawWithBox:kPDFDisplayBoxCropBox toContext:context.platformContext()];
+        [pdfPage drawWithBox:kPDFDisplayBoxCropBox toContext:RetainPtr { context.platformContext() }.get()];
     }
 }
 
-static RefPtr<NativeImage> renderPDFTileToImage(PDFDocument* pdfDocument, const TileRenderInfo& renderInfo)
+static RefPtr<NativeImage> renderPDFTileToImage(PDFDocument *pdfDocument, const TileRenderInfo& renderInfo)
 {
     ASSERT(!isMainRunLoop());
     RefPtr tileBuffer = ImageBuffer::create(renderInfo.tileRect.size(), RenderingMode::Unaccelerated, RenderingPurpose::Unspecified, renderInfo.pageCoverage.deviceScaleFactor, DestinationColorSpace::SRGB(), ImageBufferPixelFormat::BGRA8);
@@ -589,7 +604,7 @@ static RefPtr<NativeImage> renderPDFTileToImage(PDFDocument* pdfDocument, const 
 }
 
 #if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
-static std::optional<DynamicContentScalingDisplayList> renderPDFTileToDynamicContentScalingDisplayList(WebCore::DynamicContentScalingResourceCache& dynamicContentScalingResourceCache, PDFDocument* pdfDocument, const TileRenderInfo& renderInfo)
+static std::optional<DynamicContentScalingDisplayList> renderPDFTileToDynamicContentScalingDisplayList(WebCore::DynamicContentScalingResourceCache& dynamicContentScalingResourceCache, PDFDocument *pdfDocument, const TileRenderInfo& renderInfo)
 {
     ASSERT(!isMainRunLoop());
     WebCore::ImageBufferCreationContext creationContext;
@@ -639,7 +654,7 @@ void AsyncPDFRenderer::serviceRequestQueues()
         m_workQueueSlots--;
         m_workQueue->dispatch([weakThis = ThreadSafeWeakPtr { *this }, pdfDocument = RetainPtr { presentationController->pluginPDFDocument() }, renderKey, renderData = WTFMove(*renderData)
 #if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
-            , dynamicContentScalingResourceCache = dynamicContentScalingResourceCache()
+            , dynamicContentScalingResourceCache = ensureDynamicContentScalingResourceCache()
 #endif
         ] mutable {
             RenderedPDFTile tile { renderData.renderInfo };
@@ -684,7 +699,7 @@ void AsyncPDFRenderer::didCompleteTileRender(const TileForGrid& renderKey, PDFTi
     if (!tileGridLayer)
         return;
 
-    auto* tiledBacking = tileGridLayer->tiledBacking();
+    CheckedPtr tiledBacking = tileGridLayer->tiledBacking();
     if (!tiledBacking)
         return;
 
@@ -700,7 +715,7 @@ bool AsyncPDFRenderer::paintTilesForPage(const GraphicsLayer* layer, GraphicsCon
     ASSERT(isMainRunLoop());
     ASSERT(layer);
 
-    auto* tiledBacking = layer->tiledBacking();
+    CheckedPtr tiledBacking = layer->tiledBacking();
     if (!tiledBacking)
         return false;
 
@@ -816,7 +831,7 @@ void AsyncPDFRenderer::setNeedsRenderForRect(GraphicsLayer& layer, const FloatRe
 
     ASSERT(isMainRunLoop());
 
-    auto* tiledBacking = layer.tiledBacking();
+    CheckedPtr tiledBacking = layer.tiledBacking();
     if (!tiledBacking) {
         // We only expect AsyncPDFRenderer to be used with tiled layers.
         ASSERT_NOT_REACHED();
@@ -840,18 +855,19 @@ void AsyncPDFRenderer::setNeedsRenderForRect(GraphicsLayer& layer, const FloatRe
     }
 }
 
-void AsyncPDFRenderer::setNeedsPagePreviewRenderForPageCoverage(const PDFPageCoverage& pageCoverage)
+void AsyncPDFRenderer::invalidatePreviewsForPageCoverage(const PDFPageCoverage& pageCoverage)
 {
     RefPtr presentationController = m_presentationController.get();
     if (!presentationController)
         return;
-    auto pagePreviewScale = presentationController->scaleForPagePreviews();
     for (auto& pageInfo : pageCoverage)
-        generatePreviewImageForPage(pageInfo.pageIndex, pagePreviewScale);
+        removePreviewForPage(pageInfo.pageIndex);
+
+    ensurePreviewsForCurrentPageCoverage();
 }
 
 #if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
-DynamicContentScalingResourceCache AsyncPDFRenderer::dynamicContentScalingResourceCache()
+DynamicContentScalingResourceCache AsyncPDFRenderer::ensureDynamicContentScalingResourceCache()
 {
     if (!m_dynamicContentScalingResourceCache)
         m_dynamicContentScalingResourceCache = WebCore::DynamicContentScalingResourceCache::create();

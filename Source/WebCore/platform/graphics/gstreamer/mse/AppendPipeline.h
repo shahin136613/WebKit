@@ -108,6 +108,8 @@ private:
         bool isLinked() const { return gst_pad_is_linked(entryPad.get()); }
     };
 
+    void configureOptionalDemuxerFromAnyThread();
+    void removeParserForDemuxerPad(const GRefPtr<GstPad>&);
     void handleErrorSyncMessage(GstMessage*);
     void handleNeedContextSyncMessage(GstMessage*);
     // For debug purposes only:

@@ -27,8 +27,13 @@
 
 #if ENABLE(SCREEN_TIME)
 
+#import "HTTPServer.h"
 #import "InstanceMethodSwizzler.h"
+#import "PlatformUtilities.h"
+#import "Test.h"
+#import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
+#import "Utilities.h"
 #import <ScreenTime/STWebHistory.h>
 #import <ScreenTime/STWebpageController.h>
 #import <WebKit/WKPreferencesPrivate.h>
@@ -79,7 +84,8 @@ static void testSuppressUsageRecordingWithDataStore(RetainPtr<WKWebsiteDataStore
     [configuration setWebsiteDataStore:websiteDataStore.get()];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     TestWebKitAPI::Util::run(&done);
 
@@ -88,14 +94,6 @@ static void testSuppressUsageRecordingWithDataStore(RetainPtr<WKWebsiteDataStore
 
 @interface STWebpageController ()
 @property (setter=setURLIsBlocked:) BOOL URLIsBlocked;
-@end
-
-@interface STWebpageController (Staging_138865295)
-@property (nonatomic, copy) NSString *profileIdentifier;
-@end
-
-@interface STWebHistory (Staging_140439004)
-- (void)fetchAllHistoryWithCompletionHandler:(void (^)(NSSet<NSURL *> *urls, NSError *error))completionHandler;
 @end
 
 @interface WKWebView (Internal)
@@ -121,7 +119,7 @@ static void testSuppressUsageRecordingWithDataStore(RetainPtr<WKWebsiteDataStore
         return nil;
 
     _webView = webView;
-    [_webView addObserver:self forKeyPath:@"_isBlockedByScreenTime" options:(NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew) context:&blockedStateObserverChangeKVOContext];
+    [_webView addObserver:self forKeyPath:@"isBlockedByScreenTime" options:(NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew) context:&blockedStateObserverChangeKVOContext];
     return self;
 }
 
@@ -172,17 +170,19 @@ static BOOL systemScreenTimeBlockingViewIsPresent(TestWKWebView *webView)
 static RetainPtr<TestWKWebView> testShowsSystemScreenTimeBlockingView(bool showsSystemScreenTimeBlockingView)
 {
     RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    [configuration _setShowsSystemScreenTimeBlockingView:showsSystemScreenTimeBlockingView];
+    [configuration setShowsSystemScreenTimeBlockingView:showsSystemScreenTimeBlockingView];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@""];
+
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
     RetainPtr controller = [webView _screenTimeWebpageController];
     [controller setURLIsBlocked:YES];
 
-    EXPECT_EQ(showsSystemScreenTimeBlockingView, [configuration _showsSystemScreenTimeBlockingView]);
+    EXPECT_EQ(showsSystemScreenTimeBlockingView, [configuration showsSystemScreenTimeBlockingView]);
 
     // Check if ScreenTime's blocking view is hidden or not.
     EXPECT_EQ(showsSystemScreenTimeBlockingView, systemScreenTimeBlockingViewIsPresent(webView.get()));
@@ -197,7 +197,7 @@ static RetainPtr<TestWKWebView> testShowsSystemScreenTimeBlockingView(bool shows
 static void testWebContentIsNotClickableShowingSystemScreenTimeBlockingView(bool showsSystemScreenTimeBlockingView)
 {
     RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    [configuration _setShowsSystemScreenTimeBlockingView:showsSystemScreenTimeBlockingView];
+    [configuration setShowsSystemScreenTimeBlockingView:showsSystemScreenTimeBlockingView];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
     RetainPtr observer = adoptNS([[BlockedStateObserver alloc] initWithWebView:webView.get()]);
@@ -217,7 +217,7 @@ static void testWebContentIsNotClickableShowingSystemScreenTimeBlockingView(bool
     "</script>"
     "</body>"
     "</html>"
-    ")"];
+    ")" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
 
     [webView waitForNextPresentationUpdate];
 
@@ -243,33 +243,36 @@ static void testWebContentIsNotClickableShowingSystemScreenTimeBlockingView(bool
 TEST(ScreenTime, IsBlockedByScreenTimeTrue)
 {
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
     RetainPtr controller = [webView _screenTimeWebpageController];
     [controller setURLIsBlocked:YES];
 
-    EXPECT_TRUE([webView _isBlockedByScreenTime]);
+    EXPECT_TRUE([webView isBlockedByScreenTime]);
 }
 
 TEST(ScreenTime, IsBlockedByScreenTimeFalse)
 {
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
     RetainPtr controller = [webView _screenTimeWebpageController];
     [controller setURLIsBlocked:NO];
 
-    EXPECT_FALSE([webView _isBlockedByScreenTime]);
+    EXPECT_FALSE([webView isBlockedByScreenTime]);
 }
 
 TEST(ScreenTime, IsBlockedByScreenTimeMultiple)
 {
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     RetainPtr controller = [webView _screenTimeWebpageController];
     [controller setURLIsBlocked:YES];
@@ -277,7 +280,7 @@ TEST(ScreenTime, IsBlockedByScreenTimeMultiple)
 
     [webView waitForNextPresentationUpdate];
 
-    EXPECT_FALSE([webView _isBlockedByScreenTime]);
+    EXPECT_FALSE([webView isBlockedByScreenTime]);
 }
 
 TEST(ScreenTime, IsBlockedByScreenTimeKVO)
@@ -285,7 +288,8 @@ TEST(ScreenTime, IsBlockedByScreenTimeKVO)
     RetainPtr webView = webViewForScreenTimeTests();
     auto observer = adoptNS([[BlockedStateObserver alloc] initWithWebView:webView.get()]);
 
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
@@ -294,7 +298,7 @@ TEST(ScreenTime, IsBlockedByScreenTimeKVO)
 
     TestWebKitAPI::Util::run(&stateDidChange);
 
-    EXPECT_TRUE([webView _isBlockedByScreenTime]);
+    EXPECT_TRUE([webView isBlockedByScreenTime]);
 
     stateDidChange = false;
 
@@ -302,7 +306,7 @@ TEST(ScreenTime, IsBlockedByScreenTimeKVO)
 
     TestWebKitAPI::Util::run(&stateDidChange);
 
-    EXPECT_FALSE([webView _isBlockedByScreenTime]);
+    EXPECT_FALSE([webView isBlockedByScreenTime]);
 
     stateDidChange = false;
 
@@ -310,16 +314,13 @@ TEST(ScreenTime, IsBlockedByScreenTimeKVO)
 
     TestWebKitAPI::Util::run(&stateDidChange);
 
-    EXPECT_TRUE([webView _isBlockedByScreenTime]);
+    EXPECT_TRUE([webView isBlockedByScreenTime]);
 }
 
 TEST(ScreenTime, IdentifierNil)
 {
-    if (![PAL::getSTWebpageControllerClass() instancesRespondToSelector:@selector(setProfileIdentifier:)])
-        return;
-
     __block bool done = false;
-    __block NSString * identifier = @"testing123";
+    __block NSString *identifier = @"testing123";
 
     InstanceMethodSwizzler swizzler {
         PAL::getSTWebpageControllerClass(),
@@ -331,7 +332,8 @@ TEST(ScreenTime, IdentifierNil)
     };
 
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     TestWebKitAPI::Util::run(&done);
 
@@ -340,9 +342,6 @@ TEST(ScreenTime, IdentifierNil)
 
 TEST(ScreenTime, IdentifierString)
 {
-    if (![PAL::getSTWebpageControllerClass() instancesRespondToSelector:@selector(setProfileIdentifier:)])
-        return;
-
     __block bool done = false;
     __block RetainPtr identifier = @"";
 
@@ -362,7 +361,8 @@ TEST(ScreenTime, IdentifierString)
     [configuration setWebsiteDataStore:websiteDataStore.get()];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     TestWebKitAPI::Util::run(&done);
 
@@ -396,7 +396,7 @@ TEST(ScreenTime, ShowSystemScreenTimeBlockingFalseAndRemoved)
     RetainPtr webView = testShowsSystemScreenTimeBlockingView(false);
     RetainPtr controller = [webView _screenTimeWebpageController];
     [controller setURLIsBlocked:NO];
-    EXPECT_FALSE([[webView configuration] _showsSystemScreenTimeBlockingView]);
+    EXPECT_FALSE([[webView configuration] showsSystemScreenTimeBlockingView]);
     // Check if blurred blocking view is removed when URLIsBlocked is false.
     EXPECT_FALSE(blurredViewIsPresent(webView.get()));
 }
@@ -407,7 +407,9 @@ TEST(ScreenTime, WKWebViewFillsStackView)
 
     RetainPtr webView = webViewForScreenTimeTests(nil, NO);
     [webView setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [webView synchronouslyLoadHTMLString:@"<style> body { background-color: red; } </style>"];
+
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
 #if PLATFORM(MAC)
     RetainPtr stackView = adoptNS([[NSStackView alloc] init]);
@@ -445,7 +447,15 @@ TEST(ScreenTime, URLIsPlayingVideo)
 {
     RetainPtr webView = webViewForScreenTimeTests();
 
-    [webView synchronouslyLoadHTMLString:@"<video src=\"video-with-audio.mp4\" webkit-playsinline></video>"];
+    RetainPtr contentHTML = @"<!DOCTYPE html><html><head></head><body><video src=\"video-with-audio.mp4\" webkit-playsinline></video></body></html>";
+    TestWebKitAPI::HTTPServer server({
+        { "/"_s, { contentHTML.get() } },
+        { "/favicon.ico"_s, { "Actual response is immaterial."_s } },
+        { "/video-with-audio.mp4"_s, [NSData dataWithContentsOfURL:[NSBundle.test_resourcesBundle URLForResource:@"video-with-audio" withExtension:@"mp4"]] },
+    }, TestWebKitAPI::HTTPServer::Protocol::Http);
+
+    [webView synchronouslyLoadRequest:server.requestWithLocalhost()];
+
     [webView objectByEvaluatingJavaScript:@"function eventToMessage(event){window.webkit.messageHandlers.testHandler.postMessage(event.type);} var video = document.querySelector('video'); video.addEventListener('playing', eventToMessage); video.addEventListener('pause', eventToMessage);"];
 
     __block bool didBeginPlaying = false;
@@ -484,7 +494,7 @@ TEST(ScreenTime, URLIsPlayingVideo)
 }
 @end
 
-TEST(ScreenTime, URLIsPictureInPictureMacos)
+TEST(ScreenTime, URLIsPictureInPicture)
 {
     RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [configuration preferences]._allowsPictureInPictureMediaPlayback = YES;
@@ -503,11 +513,15 @@ TEST(ScreenTime, URLIsPictureInPictureMacos)
     [[window contentView] addSubview:webView.get()];
     [window makeKeyAndOrderFront:nil];
 
-    RetainPtr request = [NSURLRequest requestWithURL:[NSBundle.test_resourcesBundle URLForResource:@"PictureInPictureDelegate" withExtension:@"html"]];
+    RetainPtr contentHTML = [NSString stringWithContentsOfFile:[NSBundle.test_resourcesBundle pathForResource:@"PictureInPictureDelegate" ofType:@"html"] encoding:NSUTF8StringEncoding error:NULL];
+    TestWebKitAPI::HTTPServer server({
+        { "/"_s, { contentHTML.get() } },
+        { "/test.mp4"_s, [NSData dataWithContentsOfURL:[NSBundle.test_resourcesBundle URLForResource:@"test" withExtension:@"mp4"]] },
+    }, TestWebKitAPI::HTTPServer::Protocol::Http);
 
     receivedLoadMessage = false;
 
-    [webView loadRequest:request.get()];
+    [webView loadRequest:server.requestWithLocalhost()];
     TestWebKitAPI::Util::run(&receivedLoadMessage);
 
     hasVideoInPictureInPictureValue = false;
@@ -552,9 +566,6 @@ TEST(ScreenTime, WebContentIsNotClickableBehindBlurredBlockingView)
 
 TEST(ScreenTime, FetchData)
 {
-    if (![PAL::getSTWebHistoryClass() instancesRespondToSelector:@selector(fetchAllHistoryWithCompletionHandler:)])
-        return;
-
     __block RetainPtr<NSSet<NSURL *>> urls;
     InstanceMethodSwizzler swizzler {
         PAL::getSTWebHistoryClass(),
@@ -565,7 +576,7 @@ TEST(ScreenTime, FetchData)
         })
     };
 
-    RetainPtr dataTypeScreenTime = adoptNS([[NSSet alloc] initWithArray:@[ _WKWebsiteDataTypeScreenTime ]]);
+    RetainPtr dataTypeScreenTime = adoptNS([[NSSet alloc] initWithArray:@[ WKWebsiteDataTypeScreenTime ]]);
 
     RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
 
@@ -573,7 +584,8 @@ TEST(ScreenTime, FetchData)
     [configuration setWebsiteDataStore:websiteDataStore.get()];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@"https://www.webkit.org/"];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     __block bool done = false;
     [websiteDataStore fetchDataRecordsOfTypes:dataTypeScreenTime.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
@@ -586,19 +598,16 @@ TEST(ScreenTime, FetchData)
 
 TEST(ScreenTime, RemoveDataWithTimeInterval)
 {
-    if (![PAL::getSTWebHistoryClass() instancesRespondToSelector:@selector(deleteHistoryDuringInterval:)])
-        return;
-
     __block bool removedHistory = false;
     InstanceMethodSwizzler swizzler {
         PAL::getSTWebHistoryClass(),
         @selector(deleteHistoryDuringInterval:),
-        imp_implementationWithBlock(^(id object, NSDateInterval * interval) {
+        imp_implementationWithBlock(^(id object, NSDateInterval *interval) {
             removedHistory = true;
         })
     };
 
-    RetainPtr dataTypeScreenTime = adoptNS([[NSSet alloc] initWithArray:@[_WKWebsiteDataTypeScreenTime]]);
+    RetainPtr dataTypeScreenTime = adoptNS([[NSSet alloc] initWithArray:@[ WKWebsiteDataTypeScreenTime ]]);
 
     RetainPtr uuid = [NSUUID UUID];
     RetainPtr websiteDataStore = [WKWebsiteDataStore dataStoreForIdentifier:uuid.get()];
@@ -607,7 +616,8 @@ TEST(ScreenTime, RemoveDataWithTimeInterval)
     [configuration setWebsiteDataStore:websiteDataStore.get()];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     __block bool done = false;
     [websiteDataStore removeDataOfTypes:dataTypeScreenTime.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
@@ -621,13 +631,61 @@ TEST(ScreenTime, RemoveDataWithTimeInterval)
 
 TEST(ScreenTime, RemoveData)
 {
-    // FIXME: Add test once Screen Time implements fetchAllHistoryWithCompletionHandler API
+    __block RetainPtr<NSSet<NSURL *>> fetchedURLs = adoptNS([[NSSet alloc] initWithArray:@[
+        adoptNS([[NSURL alloc] initWithString:@"https://www.github.com/WebKit/WebKit"]).get(),
+        adoptNS([[NSURL alloc] initWithString:@"https://www.github.com/APPLE"]).get(),
+        adoptNS([[NSURL alloc] initWithString:@"https://fonts.github.com/"]).get(),
+        adoptNS([[NSURL alloc] initWithString:@"https://abcdefg.github.com/aPPLe/abc"]).get()
+    ]]);
+
+    InstanceMethodSwizzler fetchHistorySwizzler {
+        PAL::getSTWebHistoryClass(),
+        @selector(fetchAllHistoryWithCompletionHandler:),
+        imp_implementationWithBlock(^(id object, void (^completionHandler)(NSSet<NSURL *> *urls, NSError *error)) {
+            completionHandler(fetchedURLs.get(), nil);
+        })
+    };
+
+    __block RetainPtr<NSMutableSet<NSURL *>> deletedURLs = adoptNS([[NSMutableSet alloc] init]);
+    InstanceMethodSwizzler deleteHistorySwizzler {
+        PAL::getSTWebHistoryClass(),
+        @selector(deleteHistoryForURL:),
+        imp_implementationWithBlock(^(id object, NSURL *url) {
+            [deletedURLs addObject:url];
+        })
+    };
+
+    RetainPtr dataTypeScreenTime = adoptNS([[NSSet alloc] initWithArray:@[ WKWebsiteDataTypeScreenTime ]]);
+
+    RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+
+    RetainPtr websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+    [configuration setWebsiteDataStore:websiteDataStore.get()];
+
+    RetainPtr webView = webViewForScreenTimeTests(configuration.get());
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"https://www.github.com/WebKit/WebKit"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
+
+    __block bool done = false;
+    [websiteDataStore fetchDataRecordsOfTypes:dataTypeScreenTime.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
+        [websiteDataStore removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] forDataRecords:dataRecords completionHandler:^{
+            done = true;
+        }];
+    }];
+
+    TestWebKitAPI::Util::run(&done);
+
+    EXPECT_EQ([deletedURLs count], [fetchedURLs count]);
+
+    for (NSURL *url in fetchedURLs.get())
+        EXPECT_TRUE([deletedURLs containsObject:url]);
 }
 
 TEST(ScreenTime, OffscreenSystemScreenTimeBlockingView)
 {
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
@@ -647,10 +705,11 @@ TEST(ScreenTime, OffscreenSystemScreenTimeBlockingView)
 TEST(ScreenTime, OffscreenBlurredScreenTimeBlockingView)
 {
     RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    [configuration _setShowsSystemScreenTimeBlockingView:NO];
+    [configuration setShowsSystemScreenTimeBlockingView:NO];
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get());
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
@@ -692,7 +751,8 @@ TEST(ScreenTime, DoNotDonateURLsInOccludedWebView)
     };
 
     RetainPtr webView = webViewForScreenTimeTests();
-    [webView synchronouslyLoadHTMLString:@""];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
@@ -731,7 +791,7 @@ TEST(ScreenTime, CreateControllerAfterOffscreenWebViewBecomesInWindow)
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get(), NO);
 
-    [webView synchronouslyLoadHTMLString:@""];
+    [webView synchronouslyLoadHTMLString: @"" baseURL:[NSURL URLWithString:@"http://webkit.org"]];
 
     [webView waitForNextPresentationUpdate];
 
@@ -748,7 +808,8 @@ TEST(ScreenTime, ScreenTimeControllerSetsURLWhenOffscreenWebViewBecomesInWindow)
 
     RetainPtr webView = webViewForScreenTimeTests(configuration.get(), NO);
 
-    [webView synchronouslyLoadHTMLString:@"https://www.webkit.org"];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     [webView waitForNextPresentationUpdate];
 
@@ -763,8 +824,8 @@ TEST(ScreenTime, ScreenTimeControllerInstalledAfterRestoreFromSessionState)
 {
     RetainPtr webView1 = webViewForScreenTimeTests();
 
-    [webView1 loadTestPageNamed:@"simple"];
-    [webView1 _test_waitForDidFinishNavigation];
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView1 synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
 
     RetainPtr sessionState = [webView1 _sessionState];
     [webView1 _close];
@@ -780,6 +841,34 @@ TEST(ScreenTime, ScreenTimeControllerInstalledAfterRestoreFromSessionState)
     [webView2 waitForNextPresentationUpdate];
 
     EXPECT_TRUE(!![webView2 _screenTimeWebpageController]);
+}
+
+TEST(ScreenTime, ScreenTimeControllerViewOnlyInstalledForHTTPFamily)
+{
+    RetainPtr configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setShowsSystemScreenTimeBlockingView:YES];
+
+    RetainPtr webView = webViewForScreenTimeTests(configuration.get());
+
+    RetainPtr request = [NSURLRequest requestWithURL:[NSURL URLWithString:@""]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
+
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_FALSE(systemScreenTimeBlockingViewIsPresent(webView.get()));
+
+    [webView synchronouslyLoadHTMLString:@"<style> body { background-color: red; } </style>"];
+
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_FALSE(systemScreenTimeBlockingViewIsPresent(webView.get()));
+
+    request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"http://webkit.org"]];
+    [webView synchronouslyLoadSimulatedRequest:request.get() responseHTMLString:@""];
+
+    [webView waitForNextPresentationUpdate];
+
+    EXPECT_TRUE(systemScreenTimeBlockingViewIsPresent(webView.get()));
 }
 
 #endif

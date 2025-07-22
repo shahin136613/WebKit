@@ -28,6 +28,7 @@
 
 #include "FEGaussianBlurSoftwareApplier.h"
 #include "Filter.h"
+#include <numbers>
 #include <wtf/text/TextStream.h>
 
 #if USE(SKIA)
@@ -83,7 +84,7 @@ bool FEGaussianBlur::setEdgeMode(EdgeModeType edgeMode)
 
 static inline float gaussianKernelFactor()
 {
-    return 3 / 4.f * sqrtf(2 * piFloat);
+    return 3 / 4.f * sqrtf(2 * std::numbers::pi_v<float>);
 }
 
 static int clampedToKernelSize(float value)
@@ -147,7 +148,7 @@ IntOutsets FEGaussianBlur::calculateOutsets(const FloatSize& stdDeviation)
     return { outsetSize.height(), outsetSize.width(), outsetSize.height(), outsetSize.width() };
 }
 
-bool FEGaussianBlur::resultIsAlphaImage(const FilterImageVector& inputs) const
+bool FEGaussianBlur::resultIsAlphaImage(std::span<const Ref<FilterImage>> inputs) const
 {
     return inputs[0]->isAlphaImage();
 }

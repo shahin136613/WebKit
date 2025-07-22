@@ -22,6 +22,7 @@
 #include "HTMLMeterElement.h"
 
 #include "Attribute.h"
+#include "ContainerNodeInlines.h"
 #include "ElementInlines.h"
 #include "ElementIterator.h"
 #include "HTMLDivElement.h"
@@ -94,19 +95,9 @@ double HTMLMeterElement::min() const
     return parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(minAttr), 0);
 }
 
-void HTMLMeterElement::setMin(double min)
-{
-    setAttributeWithoutSynchronization(minAttr, AtomString::number(min));
-}
-
 double HTMLMeterElement::max() const
 {
     return std::max(parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(maxAttr), std::max(1.0, min())), min());
-}
-
-void HTMLMeterElement::setMax(double max)
-{
-    setAttributeWithoutSynchronization(maxAttr, AtomString::number(max));
 }
 
 double HTMLMeterElement::value() const
@@ -115,20 +106,10 @@ double HTMLMeterElement::value() const
     return std::min(std::max(value, min()), max());
 }
 
-void HTMLMeterElement::setValue(double value)
-{
-    setAttributeWithoutSynchronization(valueAttr, AtomString::number(value));
-}
-
 double HTMLMeterElement::low() const
 {
     double low = parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(lowAttr), min());
     return std::min(std::max(low, min()), max());
-}
-
-void HTMLMeterElement::setLow(double low)
-{
-    setAttributeWithoutSynchronization(lowAttr, AtomString::number(low));
 }
 
 double HTMLMeterElement::high() const
@@ -137,20 +118,10 @@ double HTMLMeterElement::high() const
     return std::min(std::max(high, low()), max());
 }
 
-void HTMLMeterElement::setHigh(double high)
-{
-    setAttributeWithoutSynchronization(highAttr, AtomString::number(high));
-}
-
 double HTMLMeterElement::optimum() const
 {
-    double optimum = parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(optimumAttr), (max() + min()) / 2);
-    return std::min(std::max(optimum, min()), max());
-}
-
-void HTMLMeterElement::setOptimum(double optimum)
-{
-    setAttributeWithoutSynchronization(optimumAttr, AtomString::number(optimum));
+    double optimum = parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(optimumAttr), std::midpoint(min(), max()));
+    return std::clamp(optimum, min(), max());
 }
 
 HTMLMeterElement::GaugeRegion HTMLMeterElement::gaugeRegion() const

@@ -82,7 +82,7 @@ public:
     void insertDebugMarker(String&& markerLabel);
     void popDebugGroup();
     void pushDebugGroup(String&& groupLabel);
-    void setBindGroup(uint32_t groupIndex, const BindGroup&, std::span<const uint32_t>);
+    void setBindGroup(uint32_t groupIndex, const BindGroup*, std::optional<Vector<uint32_t>>&&);
     void setBlendConstant(const WGPUColor&);
     void setIndexBuffer(Buffer&, WGPUIndexFormat, uint64_t offset, uint64_t size);
     void setPipeline(const RenderPipeline&);
@@ -99,7 +99,6 @@ public:
     id<MTLRenderCommandEncoder> renderCommandEncoder() const;
     void makeInvalid(NSString* = nil);
     CommandEncoder& parentEncoder() const { return m_parentEncoder; }
-    Ref<CommandEncoder> protectedParentEncoder() const { return m_parentEncoder; }
 
     bool setCommandEncoder(const BindGroupEntryUsageData::Resource&);
     void addResourceToActiveResources(const BindGroupEntryUsageData::Resource&, OptionSet<BindGroupEntryUsage>);
@@ -110,7 +109,7 @@ public:
     static std::pair<id<MTLBuffer>, uint64_t> clampIndirectBufferToValidValues(Buffer&, uint64_t indirectOffset, uint32_t minVertexCount, uint32_t minInstanceCount, Device&, uint32_t rasterSampleCount, RenderPassEncoder&, bool& splitEncoder);
     enum class IndexCall { Draw, IndirectDraw, Skip, CachedIndirectDraw };
     static std::pair<IndexCall, id<MTLBuffer>> clampIndexBufferToValidValues(uint32_t indexCount, uint32_t instanceCount, int32_t baseVertex, uint32_t firstInstance, MTLIndexType, NSUInteger indexBufferOffsetInBytes, Buffer*, uint32_t minVertexCount, uint32_t minInstanceCount, RenderPassEncoder&, Device&, uint32_t rasterSampleCount, MTLPrimitiveType);
-    void splitRenderPass();
+    bool WARN_UNUSED_RETURN splitRenderPass();
     static std::pair<uint32_t, uint32_t> computeMininumVertexInstanceCount(const RenderPipeline*, bool& needsValidationLayerWorkaround, uint64_t (^)(uint32_t));
 
 private:
@@ -139,7 +138,12 @@ private:
     std::pair<id<MTLBuffer>, uint64_t> clampIndirectIndexBufferToValidValues(Buffer&, MTLIndexType, NSUInteger indexBufferOffsetInBytes, uint64_t indirectOffset, uint32_t minVertexCount, uint32_t minInstanceCount, bool& splitEncoder);
     std::pair<id<MTLBuffer>, uint64_t> clampIndirectBufferToValidValues(Buffer&, uint64_t indirectOffset, uint32_t minVertexCount, uint32_t minInstanceCount, bool& splitEncoder);
     void setCachedRenderPassState(id<MTLRenderCommandEncoder>);
+    void emitMemoryBarrier(id<MTLRenderCommandEncoder>);
+    void setVertexBuffer(id<MTLRenderCommandEncoder>, id<MTLBuffer>, uint32_t offset, uint32_t bufferIndex);
+    void setFragmentBuffer(id<MTLRenderCommandEncoder>, id<MTLBuffer>, uint32_t offset, uint32_t bufferIndex);
 
+    void setVertexBytes(id<MTLRenderCommandEncoder>, std::span<const uint8_t>, uint32_t bufferIndex);
+    void setFragmentBytes(id<MTLRenderCommandEncoder>, std::span<const uint8_t>, uint32_t bufferIndex);
     id<MTLRenderCommandEncoder> m_renderCommandEncoder { nil };
 
     uint64_t m_debugGroupStackSize { 0 };
@@ -161,20 +165,19 @@ private:
     Vector<uint32_t> m_priorVertexDynamicOffsets;
     Vector<uint32_t> m_fragmentDynamicOffsets;
     Vector<uint32_t> m_priorFragmentDynamicOffsets;
-    Ref<CommandEncoder> m_parentEncoder;
+    const Ref<CommandEncoder> m_parentEncoder;
     HashMap<uint32_t, Vector<uint32_t>, DefaultHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> m_bindGroupDynamicOffsets;
     using EntryUsage = OptionSet<BindGroupEntryUsage>;
     using EntryMap = HashMap<uint64_t, EntryUsage, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>>;
     HashMap<const void*, EntryMap> m_usagesForTexture;
     HashMap<const void*, EntryUsage> m_usagesForBuffer;
-    float m_minDepth { 0.f };
-    float m_maxDepth { 1.f };
     HashSet<uint64_t, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> m_queryBufferIndicesToClear;
     HashSet<uint64_t, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> m_queryBufferUtilizedIndices;
     id<MTLBuffer> m_visibilityResultBuffer { nil };
     uint32_t m_renderTargetWidth { 0 };
     uint32_t m_renderTargetHeight { 0 };
     uint32_t m_rasterSampleCount { 1 };
+    uint32_t m_memoryBarrierCount { 0 };
     NSMutableDictionary<NSNumber*, TextureAndClearColor*> *m_attachmentsToClear { nil };
     id<MTLTexture> m_depthStencilAttachmentToClear { nil };
     WGPURenderPassDescriptor m_descriptor;
@@ -187,12 +190,15 @@ private:
         uint64_t offset { 0 };
         uint64_t size { 0 };
     };
-    HashMap<uint32_t, BufferAndOffset, DefaultHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> m_vertexBuffers;
+    static constexpr uint32_t maxBufferSlots = 31;
+    std::array<BufferAndOffset, maxBufferSlots> m_vertexBuffers;
+    using ExistingBufferKey = std::pair<uint64_t, uint32_t>;
+    std::array<ExistingBufferKey, maxBufferSlots> m_existingVertexBuffers;
+    std::array<ExistingBufferKey, maxBufferSlots> m_existingFragmentBuffers;
     HashMap<uint32_t, RefPtr<const BindGroup>, DefaultHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>> m_bindGroups;
+    std::array<uint32_t, 32> m_maxDynamicOffsetAtIndex;
     NSString* m_lastErrorString { nil };
-#if CPU(X86_64)
     MTLRenderPassDescriptor* m_metalDescriptor { nil };
-#endif
     std::optional<WGPUColor> m_blendColor;
     std::optional<MTLScissorRect> m_scissorRect;
     std::optional<uint32_t> m_stencilReferenceValue;
@@ -200,15 +206,15 @@ private:
     uint64_t m_drawCount { 0 };
     const uint64_t m_maxDrawCount { 0 };
     uint32_t m_stencilClearValue { 0 };
-    float m_viewportX { 0 };
-    float m_viewportY { 0 };
-    float m_viewportWidth { 0 };
-    float m_viewportHeight { 0 };
+    std::optional<MTLViewport> m_viewport;
     bool m_clearDepthAttachment { false };
     bool m_clearStencilAttachment { false };
     bool m_occlusionQueryActive { false };
     bool m_passEnded { false };
-} SWIFT_SHARED_REFERENCE(refRenderPassEncoder, derefRenderPassEncoder);
+    bool m_ignoreBufferCache { false };
+    Vector<bool> m_bindGroupDynamicOffsetsChanged;
+// FIXME: remove @safe once rdar://151039766 lands
+} __attribute__((swift_attr("@safe"))) SWIFT_SHARED_REFERENCE(refRenderPassEncoder, derefRenderPassEncoder);
 
 } // namespace WebGPU
 

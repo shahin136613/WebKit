@@ -91,7 +91,7 @@ private:
     void didRenderFrame() override;
 
 #if ENABLE(DAMAGE_TRACKING)
-    const std::optional<WebCore::Damage>& addDamage(WebCore::Damage&&) override;
+    const std::optional<WebCore::Damage>& frameDamageSinceLastUse() override;
 #endif
 
     void didCreateCompositingRunLoop(WTF::RunLoop&) override;
@@ -120,12 +120,13 @@ private:
 
         uint64_t id() const { return m_id; }
 #if ENABLE(DAMAGE_TRACKING)
+        void setDamage(WebCore::Damage&& damage) { m_damage = WTFMove(damage); }
         const std::optional<WebCore::Damage>& damage() { return m_damage; }
         void addDamage(const std::optional<WebCore::Damage>&);
 #endif
 
         virtual void willRenderFrame();
-        virtual void didRenderFrame();
+        virtual void didRenderFrame() { };
 
         std::unique_ptr<WebCore::GLFence> createRenderingFence(bool) const;
         void setReleaseFenceFD(UnixFileDescriptor&&);
@@ -202,7 +203,7 @@ private:
         void didRenderFrame() override;
 
         unsigned m_colorBuffer { 0 };
-        Ref<WebCore::ShareableBitmap> m_bitmap;
+        const Ref<WebCore::ShareableBitmap> m_bitmap;
     };
 
     class RenderTargetTexture final : public RenderTarget {
@@ -266,7 +267,7 @@ private:
 #endif
     };
 
-    CheckedRef<ThreadedCompositor> m_compositor;
+    const CheckedRef<ThreadedCompositor> m_compositor;
     uint64_t m_id { 0 };
     SwapChain m_swapChain;
     RenderTarget* m_target { nullptr };

@@ -91,7 +91,6 @@ GPUProcess/media/RemoteRemoteCommandListenerProxy.cpp
 GPUProcess/media/RemoteSourceBufferProxy.cpp
 GPUProcess/media/RemoteTextTrackProxy.cpp
 GPUProcess/media/RemoteVideoTrackProxy.cpp
-GPUProcess/webrtc/RemoteSampleBufferDisplayLayer.cpp
 GPUProcess/webrtc/RemoteSampleBufferDisplayLayerManager.cpp
 
 ModelProcess/ModelProcess.cpp
@@ -233,7 +232,7 @@ Shared/PrintInfo.cpp
 Shared/ProcessTerminationReason.cpp
 Shared/RTCNetwork.cpp
 Shared/RTCPacketOptions.cpp
-Shared/ScriptTelemetry.cpp
+Shared/ScriptTrackingPrivacyFilter.cpp
 Shared/ScrollingAccelerationCurve.cpp
 Shared/SessionState.cpp
 Shared/SharedStringHashStore.cpp
@@ -268,6 +267,7 @@ Shared/WebPushMessage.cpp
 Shared/WebTouchEvent.cpp
 Shared/WebWheelEventCoalescer.cpp
 Shared/WebWheelEvent.cpp
+Shared/WebsiteAutoplayPolicy.cpp
 Shared/WebsitePoliciesData.cpp
 
 Shared/API/APIArray.cpp
@@ -406,6 +406,7 @@ UIProcess/MediaKeySystemPermissionRequestManagerProxy.cpp
 UIProcess/MediaKeySystemPermissionRequestProxy.cpp
 UIProcess/ModelElementController.cpp
 UIProcess/OverrideLanguages.cpp
+UIProcess/PageClient.cpp
 UIProcess/PageLoadState.cpp
 UIProcess/ProcessAssertion.cpp
 UIProcess/ProcessThrottler.cpp
@@ -413,7 +414,9 @@ UIProcess/ProvisionalFrameProxy.cpp
 UIProcess/ProvisionalPageProxy.cpp
 UIProcess/RemotePageDrawingAreaProxy.cpp
 UIProcess/RemotePageFullscreenManagerProxy.cpp
+UIProcess/RemotePagePlaybackSessionManagerProxy.cpp
 UIProcess/RemotePageProxy.cpp
+UIProcess/RemotePageVideoPresentationManagerProxy.cpp
 UIProcess/ResponsivenessTimer.cpp
 UIProcess/SpeechRecognitionRemoteRealtimeMediaSource.cpp
 UIProcess/SpeechRecognitionRemoteRealtimeMediaSourceManager.cpp
@@ -484,9 +487,12 @@ UIProcess/API/APIInspectorConfiguration.cpp
 UIProcess/API/APIInspectorExtension.cpp
 UIProcess/API/APINavigation.cpp
 UIProcess/API/APINavigationData.cpp
+UIProcess/API/APINavigationResponse.cpp
+UIProcess/API/APINodeInfo.cpp
 UIProcess/API/APIPageConfiguration.cpp
 UIProcess/API/APIProcessPoolConfiguration.cpp
 UIProcess/API/APIOpenPanelParameters.cpp
+UIProcess/API/APISerializedNode.cpp
 UIProcess/API/APISessionState.cpp
 UIProcess/API/APITargetedElementInfo.cpp
 UIProcess/API/APITargetedElementRequest.cpp
@@ -561,6 +567,11 @@ UIProcess/Authentication/WebCredential.cpp
 UIProcess/Authentication/WebProtectionSpace.cpp
 
 // FIXME(206266): AutomationProtocolObjects.h's "namespace Protocol" conflicts with objc/runtime.h's "typedef struct objc_object Protocol"
+UIProcess/Automation/BidiBrowserAgent.cpp @no-unify
+UIProcess/Automation/BidiBrowsingContextAgent.cpp @no-unify
+UIProcess/Automation/BidiScriptAgent.cpp @no-unify
+UIProcess/Automation/BidiStorageAgent.cpp @no-unify
+UIProcess/Automation/BidiUserContext.cpp @no-unify
 UIProcess/Automation/SimulatedInputDispatcher.cpp @no-unify
 UIProcess/Automation/WebAutomationSession.cpp @no-unify
 UIProcess/Automation/WebDriverBidiProcessor.cpp @no-unify
@@ -593,6 +604,7 @@ UIProcess/Model/ModelProcessProxy.cpp
 
 UIProcess/Inspector/InspectorTargetProxy.cpp
 UIProcess/Inspector/RemoteWebInspectorUIProxy.cpp
+UIProcess/Inspector/WebInspectorBackendProxy.cpp
 UIProcess/Inspector/WebInspectorUIProxy.cpp
 UIProcess/Inspector/WebInspectorUIExtensionControllerProxy.cpp
 UIProcess/Inspector/WebInspectorUtilities.cpp
@@ -697,7 +709,7 @@ WebProcess/InjectedBundle/DOM/InjectedBundleNodeHandle.cpp @no-unify
 WebProcess/InjectedBundle/DOM/InjectedBundleRangeHandle.cpp @no-unify
 
 WebProcess/Inspector/RemoteWebInspectorUI.cpp
-WebProcess/Inspector/WebInspectorClient.cpp
+WebProcess/Inspector/WebInspectorBackendClient.cpp
 WebProcess/Inspector/WebInspectorInternal.cpp
 WebProcess/Inspector/WebInspectorInterruptDispatcher.cpp
 WebProcess/Inspector/WebInspectorUI.cpp
@@ -715,6 +727,7 @@ WebProcess/Model/WebModelPlayerProvider.cpp
 WebProcess/Model/ModelProcessConnection.cpp
 WebProcess/Model/ModelProcessModelPlayer.cpp
 WebProcess/Model/ModelProcessModelPlayerManager.cpp
+WebProcess/Model/ModelProcessModelPlayerTransformState.cpp
 
 WebProcess/GPU/GPUProcessConnection.cpp
 WebProcess/GPU/RemoteSharedResourceCacheProxy.cpp
@@ -960,6 +973,8 @@ RemoteXRViewMessageReceiver.cpp
 RemoteWebLockRegistryMessageReceiver.cpp
 ServiceWorkerDownloadTaskMessageReceiver.cpp
 WebBroadcastChannelRegistryMessageReceiver.cpp
+WebFrameMessageReceiver.cpp
+WebFrameProxyMessageReceiver.cpp
 WebLockRegistryProxyMessageReceiver.cpp
 WebPermissionControllerMessageReceiver.cpp
 WebPermissionControllerProxyMessageReceiver.cpp

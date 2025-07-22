@@ -85,6 +85,8 @@ bool MatchedDeclarationsCache::isCacheable(const Element& element, const RenderS
         return false;
     if (style.usesContainerUnits())
         return false;
+    if (style.useTreeCountingFunctions())
+        return false;
     if (style.usesAnchorFunctions())
         return false;
 
@@ -96,7 +98,7 @@ bool MatchedDeclarationsCache::isCacheable(const Element& element, const RenderS
     if (!parentStyle.fontCascade().isCurrent(fontSelector))
         return false;
 
-    if (element.hasRandomKeyMap())
+    if (element.hasRandomCachingKeyMap())
         return false;
 
     // FIXME: counter-style: we might need to resolve cache like for fontSelector here (rdar://103018993).
@@ -117,7 +119,7 @@ bool MatchedDeclarationsCache::Entry::isUsableAfterHighPriorityProperties(const 
     return Style::equalForLengthResolution(style, *renderStyle);
 }
 
-unsigned MatchedDeclarationsCache::computeHash(const MatchResult& matchResult, const StyleCustomPropertyData& inheritedCustomProperties)
+unsigned MatchedDeclarationsCache::computeHash(const MatchResult& matchResult, const Style::CustomPropertyData& inheritedCustomProperties)
 {
     if (matchResult.isCompletelyNonCacheable)
         return 0;
@@ -133,26 +135,33 @@ unsigned MatchedDeclarationsCache::computeHash(const MatchResult& matchResult, c
     return WTF::computeHash(matchResult, &inheritedCustomProperties);
 }
 
-const MatchedDeclarationsCache::Entry* MatchedDeclarationsCache::find(unsigned hash, const MatchResult& matchResult, const StyleCustomPropertyData& inheritedCustomProperties)
+std::optional<MatchedDeclarationsCache::Result> MatchedDeclarationsCache::find(unsigned hash, const MatchResult& matchResult, const Style::CustomPropertyData& inheritedCustomProperties, const RenderStyle& parentStyle)
 {
     if (!hash)
-        return nullptr;
+        return std::nullopt;
 
     auto it = m_entries.find(hash);
     if (it == m_entries.end())
-        return nullptr;
+        return std::nullopt;
 
-    auto& entry = it->value;
-    if (!matchResult.cacheablePropertiesEqual(entry.matchResult))
-        return nullptr;
+    const Entry* partiallyMatchingEntry = nullptr;
+    for (auto& entry : it->value) {
+        if (!matchResult.cacheablePropertiesEqual(*entry.matchResult))
+            continue;
 
-    if (&entry.parentRenderStyle->inheritedCustomProperties() != &inheritedCustomProperties)
-        return nullptr;
+        if (&entry.parentRenderStyle->inheritedCustomProperties() != &inheritedCustomProperties)
+            continue;
 
-    return &entry;
+        if (parentStyle.inheritedEqual(*entry.parentRenderStyle))
+            return std::make_optional(Result { .entry = entry, .inheritedEqual = true });
+        partiallyMatchingEntry = &entry;
+    }
+    if (partiallyMatchingEntry)
+        return std::make_optional(Result { .entry = *partiallyMatchingEntry, .inheritedEqual = false });
+    return std::nullopt;
 }
 
-void MatchedDeclarationsCache::add(const RenderStyle& style, const RenderStyle& parentStyle, const RenderStyle* userAgentAppearanceStyle, unsigned hash, const MatchResult& matchResult)
+void MatchedDeclarationsCache::add(const RenderStyle& style, const RenderStyle& parentStyle, unsigned hash, const MatchResult& matchResult)
 {
     constexpr unsigned additionsBetweenSweeps = 100;
     if (++m_additionsSinceLastSweep >= additionsBetweenSweeps && !m_sweepTimer.isActive()) {
@@ -160,16 +169,17 @@ void MatchedDeclarationsCache::add(const RenderStyle& style, const RenderStyle& 
         m_sweepTimer.startOneShot(sweepDelay);
     }
 
-    auto userAgentAppearanceStyleCopy = [&]() -> std::unique_ptr<RenderStyle> {
-        if (userAgentAppearanceStyle)
-            return RenderStyle::clonePtr(*userAgentAppearanceStyle);
-        return { };
-    };
-
     ASSERT(hash);
     // Note that we don't cache the original RenderStyle instance. It may be further modified.
     // The RenderStyle in the cache is really just a holder for the substructures and never used as-is.
-    m_entries.add(hash, Entry { matchResult, RenderStyle::clonePtr(style), RenderStyle::clonePtr(parentStyle), userAgentAppearanceStyleCopy() });
+    constexpr unsigned maxEntriesPerHash = 4;
+    auto addResult = m_entries.ensure(hash, [&] {
+        Vector<Entry> newBucket;
+        newBucket.reserveCapacity(maxEntriesPerHash);
+        return newBucket;
+    });
+    if (addResult.iterator->value.size() < maxEntriesPerHash)
+        addResult.iterator->value.append(Entry { &matchResult, RenderStyle::clonePtr(style), RenderStyle::clonePtr(parentStyle) });
 }
 
 void MatchedDeclarationsCache::remove(unsigned hash)
@@ -182,12 +192,22 @@ void MatchedDeclarationsCache::invalidate()
     m_entries.clear();
 }
 
+template<typename Callback>
+void MatchedDeclarationsCache::removeAllMatching(const Callback& matches)
+{
+    for (auto& [key, bucket] : m_entries)
+        bucket.removeAllMatching(matches);
+    m_entries.removeIf([](auto& keyValue) {
+        return !keyValue.value.size();
+    });
+}
+
 void MatchedDeclarationsCache::clearEntriesAffectedByViewportUnits()
 {
     Ref protectedThis { *this };
 
-    m_entries.removeIf([](auto& keyValue) {
-        return keyValue.value.renderStyle->usesViewportUnits();
+    removeAllMatching([&] (const Entry& entry) -> bool {
+        return entry.renderStyle->usesViewportUnits();
     });
 }
 
@@ -206,9 +226,9 @@ void MatchedDeclarationsCache::sweep()
         return false;
     };
 
-    m_entries.removeIf([&](auto& keyValue) {
-        auto& matchResult = keyValue.value.matchResult;
-        return hasOneRef(matchResult.userAgentDeclarations) || hasOneRef(matchResult.userDeclarations) || hasOneRef(matchResult.authorDeclarations);
+    removeAllMatching([&] (const Entry& entry) -> bool {
+        auto& matchResult = entry.matchResult;
+        return hasOneRef(matchResult->userAgentDeclarations) || hasOneRef(matchResult->userDeclarations) || hasOneRef(matchResult->authorDeclarations);
     });
 
     m_additionsSinceLastSweep = 0;

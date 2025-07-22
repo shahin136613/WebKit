@@ -28,6 +28,7 @@
 #import "UIKitSPI.h"
 #import "WKBaseScrollView.h"
 
+@class WKUIScrollEdgeEffect;
 @class WKWebView;
 
 @interface WKScrollView : WKBaseScrollView
@@ -51,6 +52,13 @@
 @property (nonatomic, assign, readonly) BOOL _contentInsetAdjustmentBehaviorWasExternallyOverridden;
 - (void)_setContentInsetAdjustmentBehaviorInternal:(UIScrollViewContentInsetAdjustmentBehavior)insetAdjustmentBehavior;
 - (void)_resetContentInsetAdjustmentBehavior;
+#endif
+
+#if HAVE(LIQUID_GLASS)
+- (WKUIScrollEdgeEffect *)_wk_topEdgeEffect;
+- (WKUIScrollEdgeEffect *)_wk_leftEdgeEffect;
+- (WKUIScrollEdgeEffect *)_wk_rightEdgeEffect;
+- (WKUIScrollEdgeEffect *)_wk_bottomEdgeEffect;
 #endif
 
 @end

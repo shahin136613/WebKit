@@ -65,7 +65,7 @@ template<PlatformColorSpace::Name name> static const DestinationColorSpace& know
 const DestinationColorSpace& DestinationColorSpace::SRGB()
 {
 #if USE(CG) || USE(SKIA)
-    return knownColorSpace<sRGBColorSpaceRef>();
+    return knownColorSpace<sRGBColorSpaceSingleton>();
 #else
     return knownColorSpace<PlatformColorSpace::Name::SRGB>();
 #endif
@@ -74,7 +74,7 @@ const DestinationColorSpace& DestinationColorSpace::SRGB()
 const DestinationColorSpace& DestinationColorSpace::LinearSRGB()
 {
 #if USE(CG) || USE(SKIA)
-    return knownColorSpace<linearSRGBColorSpaceRef>();
+    return knownColorSpace<linearSRGBColorSpaceSingleton>();
 #else
     return knownColorSpace<PlatformColorSpace::Name::LinearSRGB>();
 #endif
@@ -84,9 +84,18 @@ const DestinationColorSpace& DestinationColorSpace::LinearSRGB()
 const DestinationColorSpace& DestinationColorSpace::DisplayP3()
 {
 #if USE(CG) || USE(SKIA)
-    return knownColorSpace<displayP3ColorSpaceRef>();
+    return knownColorSpace<displayP3ColorSpaceSingleton>();
 #else
     return knownColorSpace<PlatformColorSpace::Name::DisplayP3>();
+#endif
+}
+
+const DestinationColorSpace& DestinationColorSpace::ExtendedDisplayP3()
+{
+#if USE(CG) || USE(SKIA)
+    return knownColorSpace<extendedDisplayP3ColorSpaceSingleton>();
+#else
+    return knownColorSpace<PlatformColorSpace::Name::ExtendedDisplayP3>();
 #endif
 }
 #endif
@@ -95,7 +104,7 @@ const DestinationColorSpace& DestinationColorSpace::DisplayP3()
 const DestinationColorSpace& DestinationColorSpace::ExtendedSRGB()
 {
 #if USE(CG) || USE(SKIA)
-    return knownColorSpace<extendedSRGBColorSpaceRef>();
+    return knownColorSpace<extendedSRGBColorSpaceSingleton>();
 #else
     return knownColorSpace<PlatformColorSpace::Name::ExtendedSRGB>();
 #endif
@@ -106,7 +115,7 @@ const DestinationColorSpace& DestinationColorSpace::ExtendedSRGB()
 const DestinationColorSpace& DestinationColorSpace::ExtendedRec2020()
 {
 #if USE(CG)
-    return knownColorSpace<ITUR_2020ColorSpaceRef>();
+    return knownColorSpace<ITUR_2020ColorSpaceSingleton>();
 #else
     return knownColorSpace<PlatformColorSpace::Name::ExtendedRec2020>();
 #endif
@@ -134,7 +143,7 @@ std::optional<DestinationColorSpace> DestinationColorSpace::asRGB() const
     if (CGColorSpaceGetModel(colorSpace) != kCGColorSpaceModelRGB)
         return std::nullopt;
 
-    if (!usesStandardRange())
+    if (usesExtendedRange())
         return std::nullopt;
 
     return DestinationColorSpace(colorSpace);
@@ -148,6 +157,17 @@ std::optional<DestinationColorSpace> DestinationColorSpace::asRGB() const
 #else
     return *this;
 #endif
+}
+
+std::optional<DestinationColorSpace> DestinationColorSpace::asExtended() const
+{
+    if (usesExtendedRange())
+        return *this;
+#if USE(CG)
+    if (RetainPtr colorSpace = adoptCF(CGColorSpaceCreateExtended(platformColorSpace())))
+        return DestinationColorSpace(WTFMove(colorSpace));
+#endif
+    return std::nullopt;
 }
 
 bool DestinationColorSpace::supportsOutput() const
@@ -170,7 +190,7 @@ bool DestinationColorSpace::usesExtendedRange() const
 #endif
 }
 
-bool DestinationColorSpace::usesRec2100TransferFunctions() const
+bool DestinationColorSpace::usesITUR_2100TF() const
 {
 #if USE(CG)
     return CGColorSpaceUsesITUR_2100TF(platformColorSpace());

@@ -34,14 +34,14 @@
 #include "DeprecatedGlobalSettings.h"
 #include "Logging.h"
 #include "PlatformMediaSessionManager.h"
+#include <algorithm>
 
 namespace WebCore {
 
 constexpr Seconds voiceActivityThrottlingDuration = 5_s;
 
 BaseAudioSharedUnit::BaseAudioSharedUnit()
-    : m_sampleRate(AudioSession::protectedSharedSession()->sampleRate())
-    , m_voiceActivityThrottleTimer([] { })
+    : m_sampleRate(AudioSession::singleton().sampleRate())
 {
     RealtimeMediaSourceCenter::singleton().addDevicesChangedObserver(*this);
 }
@@ -91,6 +91,7 @@ const static OSStatus lowPriorityError2 = 561017449;
 void BaseAudioSharedUnit::startProducingData()
 {
     ASSERT(isMainThread());
+    ASSERT(m_isAllowedToStart);
 
     if (m_suspended)
         resume();
@@ -137,10 +138,10 @@ OSStatus BaseAudioSharedUnit::startUnit()
     forEachClient([](auto& client) {
         client.audioUnitWillStart();
     });
-    ASSERT(!DeprecatedGlobalSettings::shouldManageAudioSessionCategory() || AudioSession::sharedSession().category() == AudioSession::CategoryType::PlayAndRecord);
+    ASSERT(!DeprecatedGlobalSettings::shouldManageAudioSessionCategory() || AudioSession::singleton().category() == AudioSession::CategoryType::PlayAndRecord);
 
 #if PLATFORM(IOS_FAMILY)
-    if (AudioSession::sharedSession().category() != AudioSession::CategoryType::PlayAndRecord) {
+    if (AudioSession::singleton().category() != AudioSession::CategoryType::PlayAndRecord) {
         RELEASE_LOG_ERROR(WebRTC, "BaseAudioSharedUnit::startUnit cannot call startInternal if category is not set to PlayAndRecord");
         return lowPriorityError2;
     }
@@ -190,7 +191,7 @@ void BaseAudioSharedUnit::devicesChanged()
     if (persistentID.isEmpty())
         return;
 
-    if (WTF::anyOf(devices, [&persistentID] (auto& device) { return persistentID == device.persistentId(); })) {
+    if (std::ranges::any_of(devices, [&persistentID](auto& device) { return persistentID == device.persistentId(); })) {
         validateOutputDevice(m_outputDeviceID);
         return;
     }
@@ -354,14 +355,24 @@ void BaseAudioSharedUnit::handleNewCurrentMicrophoneDevice(CaptureDevice&& devic
 
 void BaseAudioSharedUnit::voiceActivityDetected()
 {
-    if (m_voiceActivityThrottleTimer.isActive() || !m_voiceActivityCallback)
+    if (!m_voiceActivityThrottleTimer)
+        m_voiceActivityThrottleTimer = makeUnique<Timer>([] { });
+
+    if (m_voiceActivityThrottleTimer->isActive() || !m_voiceActivityCallback)
         return;
 
     RELEASE_LOG_INFO(WebRTC, "BaseAudioSharedUnit::voiceActivityDetected");
 
     m_voiceActivityCallback();
-    m_voiceActivityThrottleTimer.startOneShot(voiceActivityThrottlingDuration);
+    m_voiceActivityThrottleTimer->startOneShot(voiceActivityThrottlingDuration);
 }
+
+void BaseAudioSharedUnit::disableVoiceActivityThrottleTimerForTesting()
+{
+    if (m_voiceActivityThrottleTimer)
+        m_voiceActivityThrottleTimer->stop();
+}
+
 
 } // namespace WebCore
 

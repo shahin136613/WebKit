@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,7 @@
 #include "config.h"
 #include "APINavigation.h"
 
+#include "BrowsingWarning.h"
 #include "WebBackForwardListFrameItem.h"
 #include "WebBackForwardListItem.h"
 #include <WebCore/RegistrableDomain.h>
@@ -33,6 +34,7 @@
 #include <WebCore/ResourceResponse.h>
 #include <wtf/DebugUtilities.h>
 #include <wtf/HexNumber.h>
+#include <wtf/URL.h>
 #include <wtf/text/MakeString.h>
 
 namespace API {
@@ -76,7 +78,7 @@ Navigation::Navigation(WebCore::ProcessIdentifier processID, WebCore::ResourceRe
 Navigation::Navigation(WebCore::ProcessIdentifier processID, Ref<WebBackForwardListFrameItem>&& targetFrameItem, RefPtr<WebBackForwardListItem>&& fromItem, FrameLoadType backForwardFrameLoadType)
     : m_navigationID(WebCore::NavigationIdentifier::generate())
     , m_processID(processID)
-    , m_originalRequest(targetFrameItem->protectedMainFrame()->url())
+    , m_originalRequest(WTF::URL { targetFrameItem->protectedMainFrame()->url() })
     , m_currentRequest(m_originalRequest)
     , m_targetFrameItem(WTFMove(targetFrameItem))
     , m_fromItem(WTFMove(fromItem))
@@ -101,6 +103,11 @@ Navigation::Navigation(WebCore::ProcessIdentifier processID, WebCore::ResourceRe
 
 Navigation::~Navigation()
 {
+}
+
+void Navigation::resetRequestStart()
+{
+    m_requestStart = MonotonicTime::now();
 }
 
 void Navigation::setCurrentRequest(ResourceRequest&& request, ProcessIdentifier processIdentifier)
@@ -139,6 +146,42 @@ void Navigation::markRequestAsFromClientInput()
     m_requestIsFromClientInput = true;
     if (m_lastNavigationAction)
         m_lastNavigationAction->isRequestFromClientOrUserInput = true;
+}
+
+void Navigation::setSafeBrowsingCheckOngoing(size_t index, bool ongoing)
+{
+    if (ongoing)
+        m_ongoingSafeBrowsingChecks.add(index);
+    else
+        m_ongoingSafeBrowsingChecks.remove(index);
+}
+
+bool Navigation::safeBrowsingCheckOngoing(size_t index)
+{
+    return m_ongoingSafeBrowsingChecks.contains(index);
+}
+
+bool Navigation::safeBrowsingCheckOngoing()
+{
+    return !m_ongoingSafeBrowsingChecks.isEmpty();
+}
+
+RefPtr<WebKit::BrowsingWarning> Navigation::safeBrowsingWarning()
+{
+    return m_safeBrowsingWarning;
+}
+
+void Navigation::setSafeBrowsingWarning(RefPtr<WebKit::BrowsingWarning>&& safeBrowsingWarning)
+{
+    m_safeBrowsingWarning = WTFMove(safeBrowsingWarning);
+}
+
+size_t Navigation::redirectChainIndex(const WTF::URL& url)
+{
+    size_t index = m_redirectChain.find(url);
+    if (index == WTF::notFound)
+        index = m_redirectChain.size();
+    return index;
 }
 
 #if !LOG_DISABLED

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -99,7 +99,7 @@ void ServiceWorkerJob::startScriptFetch(FetchOptions::Cache cachePolicy)
 
 static ResourceRequest scriptResourceRequest(ScriptExecutionContext& context, const URL& url)
 {
-    ResourceRequest request { url };
+    ResourceRequest request { URL { url } };
     request.setInitiatorIdentifier(context.resourceRequestIdentifier());
     return request;
 }
@@ -122,11 +122,12 @@ void ServiceWorkerJob::fetchScriptWithContext(ScriptExecutionContext& context, F
 
     auto source = m_jobData.workerType == WorkerType::Module ? WorkerScriptLoader::Source::ModuleScript : WorkerScriptLoader::Source::ClassicWorkerScript;
 
-    m_scriptLoader = WorkerScriptLoader::create();
+    Ref scriptLoader = WorkerScriptLoader::create();
+    m_scriptLoader = scriptLoader.copyRef();
     auto request = scriptResourceRequest(context, m_jobData.scriptURL);
     request.addHTTPHeaderField(HTTPHeaderName::ServiceWorker, "script"_s);
 
-    m_scriptLoader->loadAsynchronously(context, WTFMove(request), source, scriptFetchOptions(cachePolicy, FetchOptions::Destination::Serviceworker), ContentSecurityPolicyEnforcement::DoNotEnforce, ServiceWorkersMode::None, *this, WorkerRunLoop::defaultMode());
+    scriptLoader->loadAsynchronously(context, WTFMove(request), source, scriptFetchOptions(cachePolicy, FetchOptions::Destination::Serviceworker), ContentSecurityPolicyEnforcement::DoNotEnforce, ServiceWorkersMode::None, *this, WorkerRunLoop::defaultMode());
 }
 
 ResourceError ServiceWorkerJob::validateServiceWorkerResponse(const ServiceWorkerJobData& jobData, const ResourceResponse& response)
@@ -164,7 +165,7 @@ void ServiceWorkerJob::didReceiveResponse(ScriptExecutionContextIdentifier, std:
     if (error.isNull())
         return;
 
-    m_scriptLoader->cancel();
+    Ref { *m_scriptLoader }->cancel();
     m_scriptLoader = nullptr;
 
     Exception exception { ExceptionCode::SecurityError, error.localizedDescription() };
@@ -196,6 +197,11 @@ bool ServiceWorkerJob::cancelPendingLoad()
         return true;
     }
     return false;
+}
+
+bool ServiceWorkerJob::isRegistering() const
+{
+    return !m_completed && m_jobData.type == ServiceWorkerJobType::Register;
 }
 
 } // namespace WebCore

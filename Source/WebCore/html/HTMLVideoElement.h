@@ -65,7 +65,6 @@ public:
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     bool webkitWirelessVideoPlaybackDisabled() const;
-    void setWebkitWirelessVideoPlaybackDisabled(bool);
 #endif
 
 #if ENABLE(MEDIA_STATISTICS)
@@ -137,6 +136,12 @@ public:
     bool isGStreamerHolePunchingEnabled() const final { return m_enableGStreamerHolePunching; }
 #endif
 
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    WEBCORE_EXPORT void didEnterExternalPlayback();
+    WEBCORE_EXPORT void didExitExternalPlayback();
+    bool isInExternalPlayback() const { return m_isInExternalPlayback; };
+#endif
+
     // ActiveDOMObject
     void stop() final;
 
@@ -172,7 +177,7 @@ private:
     bool canShowWhileLocked() const final;
 #endif
 
-    std::unique_ptr<HTMLImageLoader> m_imageLoader;
+    const std::unique_ptr<HTMLImageLoader> m_imageLoader;
 
     AtomString m_defaultPosterURL;
 
@@ -190,7 +195,7 @@ private:
 #endif
 
     struct VideoFrameRequest {
-        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(VideoFrameRequest);
         VideoFrameRequest(unsigned identifier, Ref<VideoFrameRequestCallback>&& callback)
             : identifier(identifier)
             , callback(WTFMove(callback))
@@ -206,6 +211,10 @@ private:
 
 #if USE(GSTREAMER)
     bool m_enableGStreamerHolePunching { false };
+#endif
+
+#if ENABLE(LINEAR_MEDIA_PLAYER)
+    bool m_isInExternalPlayback { false };
 #endif
 };
 

@@ -222,7 +222,7 @@ private:
                     break;
                 node->convertCheckStructureOrEmptyToCheckStructure();
                 changed = true;
-                FALLTHROUGH;
+                [[fallthrough]];
             }
             case CheckStructure:
             case ArrayifyToStructure: {
@@ -387,7 +387,7 @@ private:
                 // CheckArrayOrEmpty can be removed when arrayMode meets the requirement. In that case, CellUse's
                 // check just remains, and it works as CheckArrayOrEmpty without ArrayMode checking.
                 ASSERT(typeFilterFor(node->child1().useKind()) & SpecEmpty);
-                FALLTHROUGH;
+                [[fallthrough]];
             }
 
             case CheckArray:
@@ -741,7 +741,7 @@ private:
             case GetPrivateNameById: {
                 Edge childEdge = node->child1();
                 Node* child = childEdge.node();
-                UniquedStringImpl* uid = node->cacheableIdentifier().uid();
+                CacheableIdentifier identifier = node->cacheableIdentifier();
                 
                 AbstractValue baseValue = m_state.forNode(child);
 
@@ -754,28 +754,40 @@ private:
                 if (!baseValue.m_structure.isFinite()
                     || (node->child1().useKind() == UntypedUse || (baseValue.m_type & ~SpecCell)))
                     break;
-                
-                GetByStatus status = GetByStatus::computeFor(baseValue.m_structure.toStructureSet(), uid);
+
+                GetByStatus status = GetByStatus::computeFor(m_graph.globalObjectFor(node->origin.semantic), baseValue.m_structure.toStructureSet(), identifier);
                 if (!status.isSimple())
                     break;
-                
-                for (unsigned i = status.numVariants(); i--;) {
-                    if (!status[i].conditionSet().isEmpty()) {
-                        // FIXME: We could handle prototype cases.
-                        // https://bugs.webkit.org/show_bug.cgi?id=110386
-                        break;
-                    }
-                }
-                
+
+
                 auto addFilterStatus = [&] () {
                     m_insertionSet.insertNode(
                         indexInBlock, SpecNone, FilterGetByStatus, node->origin,
                         OpInfo(m_graph.m_plan.recordedStatuses().addGetByStatus(node->origin.semantic, status)),
                         Edge(child));
                 };
-                
+
+                // AI already concluded this was a constant so we're safe to do so as well.
+                if (AbstractValue constantResult = m_state.forNode(node); constantResult.value()) {
+                    addFilterStatus();
+                    m_graph.convertToConstant(node, constantResult.value());
+                    changed = true;
+                    break;
+                }
+
                 if (status.numVariants() == 1) {
-                    unsigned identifierNumber = m_graph.identifiers().ensure(uid);
+                    auto variant = status[0];
+                    if (!variant.conditionSet().isEmpty())
+                        break;
+                }
+
+                for (unsigned i = status.numVariants(); i--;) {
+                    if (!status[i].conditionSet().isEmpty())
+                        break;
+                }
+
+                if (status.numVariants() == 1) {
+                    unsigned identifierNumber = m_graph.identifiers().ensure(identifier.uid());
                     addFilterStatus();
                     emitGetByOffset(indexInBlock, node, baseValue, status[0], identifierNumber);
                     changed = true;
@@ -785,7 +797,7 @@ private:
                 if (!m_graph.m_plan.isFTL())
                     break;
                 
-                unsigned identifierNumber = m_graph.identifiers().ensure(uid);
+                unsigned identifierNumber = m_graph.identifiers().ensure(identifier.uid());
                 addFilterStatus();
                 MultiGetByOffsetData* data = m_graph.m_multiGetByOffsetData.add();
                 for (const GetByVariant& variant : status.variants()) {
@@ -1106,7 +1118,7 @@ private:
             }
 
             case ResolveRope: {
-                if (m_state.forNode(node->child1()).m_type & ~SpecStringIdent)
+                if (!m_state.forNode(node->child1()).isType(SpecStringResolved))
                     break;
 
                 node->convertToIdentity();
@@ -1172,6 +1184,10 @@ private:
                 if (m_graph.m_plan.isUnlinked())
                     break;
 
+                // Don't constant fold for tainted code
+                if (m_graph.m_profiledBlock->couldBeTainted())
+                    break;
+
                 JSGlobalObject* globalObject = m_graph.globalObjectFor(node->origin.semantic);
                 Edge target = m_graph.child(node, 0);
                 AbstractValue& targetValue = m_state.forNode(target);
@@ -1179,7 +1195,7 @@ private:
                 if (!(targetValue.m_type & ~SpecFunction) && structureSet.isFinite() && structureSet.size() == 1) {
                     RegisteredStructure structure = structureSet.onlyStructure();
                     if (JSBoundFunction::canSkipNameAndLengthMaterialization(globalObject, structure.get())) {
-                        node->convertToNewBoundFunction(m_graph.freeze(m_graph.m_vm.getBoundFunction(/* isJSFunction */ true)));
+                        node->convertToNewBoundFunction(m_graph.freeze(m_graph.m_vm.getBoundFunction(/* isJSFunction */ true, SourceTaintedOrigin::Untainted)));
                         changed = true;
                         break;
                     }
@@ -1259,7 +1275,7 @@ private:
                         edge.setUseKind(KnownStringUse);
                     });
                 changed = true;
-                FALLTHROUGH;
+                [[fallthrough]];
             }
 
             case MakeRope:
@@ -1471,7 +1487,8 @@ private:
             case ValueBitAnd:
             case ValueBitOr:
             case ValueBitRShift:
-            case ValueBitLShift: {
+            case ValueBitLShift:
+            case ValueBitURShift: {
                 if (node->binaryUseKind() == UntypedUse) {
                     auto& value1 = m_state.forNode(node->child1());
                     auto& value2 = m_state.forNode(node->child2());
@@ -1492,12 +1509,17 @@ private:
                         case ValueBitRShift:
                             node->setOp(ArithBitRShift);
                             break;
+                        case ValueBitURShift:
+                            node->setOp(ArithBitURShift);
+                            break;
                         default:
                             DFG_CRASH(m_graph, node, "Unexpected node");
                             break;
                         }
                         node->child1() = Edge(node->child1().node(), KnownInt32Use);
                         node->child2() = Edge(node->child2().node(), KnownInt32Use);
+                        node->clearFlags(NodeMustGenerate);
+                        node->setResult(NodeResultInt32);
                         changed = true;
                         break;
                     }

@@ -29,6 +29,7 @@
 
 #include "Connection.h"
 #include "MessageReceiverMap.h"
+#include <WebCore/ModelPlayerIdentifier.h>
 #include <wtf/AbstractThreadSafeRefCountedAndCanMakeWeakPtr.h>
 #include <wtf/RefCounted.h>
 #include <wtf/WeakHashSet.h>
@@ -45,7 +46,7 @@ struct WebPageCreationParameters;
 class ModelProcessConnection
     : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<ModelProcessConnection>
     , public IPC::Connection::Client {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(ModelProcessConnection);
     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(ModelProcessConnection);
 public:
     static RefPtr<ModelProcessConnection> create(IPC::Connection& parentConnection);
@@ -94,6 +95,7 @@ private:
 
     // Messages.
     void didInitialize(std::optional<ModelProcessConnectionInfo>&&);
+    void didUnloadModelPlayer(WebCore::ModelPlayerIdentifier);
 
     // The connection from the web process to the model process.
     Ref<IPC::Connection> m_connection;

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) Research In Motion Limited 2011. All rights reserved.
- * Copyright (C) 2021-2022 Apple Inc.  All rights reserved.
+ * Copyright (C) 2021-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -143,7 +143,7 @@ OptionSet<FilterRenderingMode> FEDropShadow::supportedFilterRenderingModes() con
 #if USE(SKIA)
     modes.add(FilterRenderingMode::Accelerated);
 #endif
-#if HAVE(CGSTYLE_CREATE_SHADOW2)
+#if USE(CG)
     if (m_stdX == m_stdY)
         modes.add(FilterRenderingMode::GraphicsContext);
 #endif

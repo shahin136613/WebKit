@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2009 Apple Inc.  All rights reserved.
+ * Copyright (C) 2007, 2009 Apple Inc. All rights reserved.
  * Copyright (C) 2007 Collabora Ltd. All rights reserved.
  * Copyright (C) 2007 Alp Toker <alp@atoker.com>
  * Copyright (C) 2009, 2010, 2016 Igalia S.L
@@ -57,7 +57,7 @@ public:
     void play() override;
     void pause() override;
     void seekToTarget(const SeekTarget&) override;
-    bool doSeek(const SeekTarget&, float rate) override;
+    bool doSeek(const SeekTarget&, float rate, bool isAsync = false) override;
 
     void updatePipelineState(GstState);
 

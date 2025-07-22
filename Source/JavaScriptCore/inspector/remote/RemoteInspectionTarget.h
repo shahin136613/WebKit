@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2023 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,6 +60,7 @@ public:
     virtual void setIndicating(bool) { } // Default is to do nothing.
 
     virtual bool automaticInspectionAllowed() const { return false; }
+    virtual bool automaticInspectionAllowedInSameProcess() const { return false; }
     JS_EXPORT_PRIVATE virtual void pauseWaitingForAutomaticInspection();
     JS_EXPORT_PRIVATE virtual void unpauseForResolvedAutomaticInspection();
 

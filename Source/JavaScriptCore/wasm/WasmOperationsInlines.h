@@ -58,7 +58,7 @@ JSWebAssemblyArray* tryFillArray(JSWebAssemblyInstance* instance, WebAssemblyGCS
     VM& vm = instance->vm();
 
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, size);
-    if (LIKELY(array))
+    if (array) [[likely]]
         array->fill(vm, 0, static_cast<T>(value), size);
     return array;
 }
@@ -74,11 +74,7 @@ inline JSValue arrayNew(JSWebAssemblyInstance* instance, uint32_t typeIndex, uin
 
     size_t elementSize = fieldType.type.elementSize();
 
-    if (UNLIKELY(productOverflows<uint32_t>(elementSize, size) || elementSize * size > maxArraySizeInBytes))
-        return jsNull();
-
     JSWebAssemblyArray* array = nullptr;
-
     switch (elementSize) {
     case sizeof(uint8_t): {
         array = tryFillArray<uint8_t>(instance, structure, size, static_cast<uint8_t>(encValue));
@@ -99,7 +95,7 @@ inline JSValue arrayNew(JSWebAssemblyInstance* instance, uint32_t typeIndex, uin
     default:
         RELEASE_ASSERT_NOT_REACHED();
     }
-    if (UNLIKELY(!array))
+    if (!array) [[unlikely]]
         return jsNull();
     return array;
 }
@@ -114,17 +110,12 @@ inline JSValue arrayNew(JSWebAssemblyInstance* instance, uint32_t typeIndex, uin
     const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
     ASSERT(arraySignature.is<ArrayType>());
     Wasm::FieldType fieldType = arraySignature.as<ArrayType>()->elementType();
-    ASSERT(fieldType.type.unpacked() == Wasm::Types::V128);
-
-    RefPtr rtt = instance->module().moduleInformation().rtts[typeIndex];
-    size_t elementSize = fieldType.type.elementSize();
-
-    if (UNLIKELY(productOverflows<uint32_t>(elementSize, size) || elementSize * size > maxArraySizeInBytes))
-        return jsNull();
+    ASSERT_UNUSED(fieldType, fieldType.type.unpacked() == Wasm::Types::V128);
 
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, size);
-    if (UNLIKELY(!array))
+    if (!array) [[unlikely]]
         return jsNull();
+
     array->fill(vm, 0, value, size);
     return array;
 }
@@ -135,11 +126,11 @@ JSWebAssemblyArray* tryCopyElementsInReverse(JSWebAssemblyInstance* instance, We
     VM& vm = instance->vm();
 
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, size);
-    if (UNLIKELY(!array))
-        return array;
-    if (!size)
+    if (!array) [[unlikely]]
         return array;
 
+    if (!size)
+        return array;
 
     ASSERT(arguments);
     auto span = array->span<T>();
@@ -185,7 +176,7 @@ inline JSValue arrayNewFixed(JSWebAssemblyInstance* instance, uint32_t typeIndex
     default:
         RELEASE_ASSERT_NOT_REACHED();
     }
-    if (UNLIKELY(!array))
+    if (!array) [[unlikely]]
         return jsNull();
     return array;
 }
@@ -196,7 +187,7 @@ EncodedJSValue createArrayFromDataSegment(JSWebAssemblyInstance* instance, WebAs
     JSGlobalObject* globalObject = instance->globalObject();
     VM& vm = globalObject->vm();
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, arraySize);
-    if (UNLIKELY(!array))
+    if (!array) [[unlikely]]
         return JSValue::encode(jsNull());
 
     ASSERT(!array->elementsAreRefTypes());
@@ -224,13 +215,13 @@ inline EncodedJSValue arrayNewData(JSWebAssemblyInstance* instance, uint32_t typ
     size_t elementSize = fieldType.type.elementSize();
 
     // Check for overflow when determining array length in bytes
-    if (UNLIKELY(productOverflows<uint32_t>(elementSize, arraySize)))
+    if (productOverflows<uint32_t>(elementSize, arraySize)) [[unlikely]]
         return JSValue::encode(jsNull());
 
     uint32_t arrayLengthInBytes = arraySize * elementSize;
 
     // Check for offset + arrayLengthInBytes overflow
-    if (UNLIKELY(sumOverflows<uint32_t>(offset, arrayLengthInBytes)))
+    if (sumOverflows<uint32_t>(offset, arrayLengthInBytes)) [[unlikely]]
         return JSValue::encode(jsNull());
 
     // Finally, allocate the array from the `values` vector
@@ -279,25 +270,17 @@ inline EncodedJSValue arrayNewElem(JSWebAssemblyInstance* instance, uint32_t typ
     auto element = instance->elementAt(elemSegmentIndex);
     size_t segmentLength = element ? element->length() : 0U;
     auto calculatedArrayEnd = CheckedUint32 { offset } + arraySize;
-    if (UNLIKELY(calculatedArrayEnd.hasOverflowed() || calculatedArrayEnd > segmentLength))
+    if (calculatedArrayEnd.hasOverflowed() || calculatedArrayEnd > segmentLength) [[unlikely]]
         return JSValue::encode(jsNull());
-
-    StorageType storageType(element->elementType);
-    if (segmentLength) {
-        size_t elementTypeSize = typeSizeInBytes(storageType);
-        auto newArraySizeInBytes = CheckedSize { elementTypeSize } * arraySize;
-        if (UNLIKELY(newArraySizeInBytes.hasOverflowed() || newArraySizeInBytes > maxArraySizeInBytes))
-            return JSValue::encode(jsNull());
-    }
 
     VM& vm = instance->vm();
     StorageType arrayType = structure->typeDefinition().as<ArrayType>()->elementType().type;
-    ASSERT_UNUSED(arrayType, isSubtype(storageType, arrayType));
+    ASSERT_UNUSED(arrayType, isSubtype(StorageType(element->elementType), arrayType));
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, arraySize);
-    if (UNLIKELY(!array))
+    if (!array) [[unlikely]]
         return JSValue::encode(jsNull());
     instance->copyElementSegment(array, instance->module().moduleInformation().elements[elemSegmentIndex], offset, arraySize, array->span<uint64_t>().data());
-    ASSERT(Wasm::isRefType(storageType.unpacked()));
+    ASSERT(Wasm::isRefType(element->elementType));
     vm.writeBarrier(array);
     return JSValue::encode(array);
 }
@@ -338,7 +321,7 @@ inline void arraySet(JSWebAssemblyInstance* instance, uint32_t typeIndex, Encode
     arrayObject->set(instance->vm(), index, value);
 }
 
-inline bool doArrayFill(VM& vm, EncodedJSValue arrayValue, uint32_t offset, std::variant<uint64_t, v128_t> value, uint32_t size)
+inline bool doArrayFill(VM& vm, EncodedJSValue arrayValue, uint32_t offset, Variant<uint64_t, v128_t> value, uint32_t size)
 {
     JSValue arrayRef = JSValue::decode(arrayValue);
     ASSERT(arrayRef.isObject());

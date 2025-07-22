@@ -52,9 +52,16 @@
 namespace WebKit {
 using namespace WebCore;
 
-RemoteDisplayListRecorder::RemoteDisplayListRecorder(ImageBuffer& imageBuffer, RenderingResourceIdentifier imageBufferIdentifier, RemoteRenderingBackend& renderingBackend)
+Ref<RemoteDisplayListRecorder> RemoteDisplayListRecorder::create(WebCore::ImageBuffer& imageBuffer, RemoteDisplayListRecorderIdentifier identifier, RemoteRenderingBackend& renderingBackend)
+{
+    auto instance = adoptRef(*new RemoteDisplayListRecorder(imageBuffer, identifier, renderingBackend));
+    instance->startListeningForIPC();
+    return instance;
+}
+
+RemoteDisplayListRecorder::RemoteDisplayListRecorder(ImageBuffer& imageBuffer, RemoteDisplayListRecorderIdentifier identifier, RemoteRenderingBackend& renderingBackend)
     : m_imageBuffer(imageBuffer)
-    , m_imageBufferIdentifier(imageBufferIdentifier)
+    , m_identifier(identifier)
     , m_renderingBackend(renderingBackend)
     , m_sharedResourceCache(renderingBackend.sharedResourceCache())
 {
@@ -85,12 +92,12 @@ std::optional<SourceImage> RemoteDisplayListRecorder::sourceImage(RenderingResou
 
 void RemoteDisplayListRecorder::startListeningForIPC()
 {
-    m_renderingBackend->protectedStreamConnection()->startReceivingMessages(*this, Messages::RemoteDisplayListRecorder::messageReceiverName(), m_imageBufferIdentifier.toUInt64());
+    m_renderingBackend->streamConnection().startReceivingMessages(*this, Messages::RemoteDisplayListRecorder::messageReceiverName(), m_identifier.toUInt64());
 }
 
 void RemoteDisplayListRecorder::stopListeningForIPC()
 {
-    m_renderingBackend->protectedStreamConnection()->stopReceivingMessages(Messages::RemoteDisplayListRecorder::messageReceiverName(), m_imageBufferIdentifier.toUInt64());
+    m_renderingBackend->streamConnection().stopReceivingMessages(Messages::RemoteDisplayListRecorder::messageReceiverName(), m_identifier.toUInt64());
 }
 
 void RemoteDisplayListRecorder::save()
@@ -128,53 +135,153 @@ void RemoteDisplayListRecorder::concatCTM(const AffineTransform& ctm)
     context().concatCTM(ctm);
 }
 
-void RemoteDisplayListRecorder::setInlineFillColor(PackedColor::RGBA color)
+void RemoteDisplayListRecorder::setFillPackedColor(PackedColor::RGBA color)
 {
     context().setFillColor(asSRGBA(color));
 }
 
-void RemoteDisplayListRecorder::setInlineStroke(std::optional<PackedColor::RGBA> color, std::optional<float> thickness)
+void RemoteDisplayListRecorder::setFillColor(const Color& color)
 {
-    if (color)
-        context().setStrokeColor(asSRGBA(*color));
-    if (thickness)
-        context().setStrokeThickness(*thickness);
+    context().setFillColor(color);
 }
 
-void RemoteDisplayListRecorder::setState(DisplayList::SetState&& item)
+void RemoteDisplayListRecorder::setFillCachedGradient(RenderingResourceIdentifier identifier, const AffineTransform& spaceTransform)
 {
-    auto fixPatternTileImage = [&](Pattern* pattern) -> bool {
-        if (!pattern)
-            return true;
-        auto tileImage = sourceImage(pattern->tileImage().imageIdentifier());
-        if (!tileImage) {
-            ASSERT_NOT_REACHED();
-            return false;
-        }
-        pattern->setTileImage(WTFMove(*tileImage));
-        return true;
-    };
-
-    auto fixBrushGradient = [&](SourceBrush& brush) -> bool {
-        auto gradientIdentifier = brush.gradientIdentifier();
-        if (!gradientIdentifier)
-            return true;
-        RefPtr gradient = resourceCache().cachedGradient(*gradientIdentifier);
-        if (!gradient) {
-            ASSERT_NOT_REACHED();
-            return false;
-        }
-        brush.setGradient(*gradient, brush.gradientSpaceTransform());
-        return true;
-    };
-
-    if (!fixPatternTileImage(item.state().fillBrush().protectedPattern().get()) || !fixBrushGradient(item.state().fillBrush()))
+    RefPtr gradient = resourceCache().cachedGradient(identifier);
+    if (!gradient) {
+        ASSERT_NOT_REACHED();
         return;
+    }
+    context().setFillGradient(gradient.releaseNonNull(), spaceTransform);
+}
 
-    if (!fixPatternTileImage(item.state().strokeBrush().protectedPattern().get()) || !fixBrushGradient(item.state().strokeBrush()))
+void RemoteDisplayListRecorder::setFillGradient(Ref<Gradient>&& gradient, const AffineTransform& spaceTransform)
+{
+    context().setFillGradient(WTFMove(gradient), spaceTransform);
+}
+
+void RemoteDisplayListRecorder::setFillPattern(RenderingResourceIdentifier tileImageIdentifier, const PatternParameters& parameters)
+{
+    auto tileImage = sourceImage(tileImageIdentifier);
+    if (!tileImage) {
+        ASSERT_NOT_REACHED();
         return;
+    }
+    context().setFillPattern(Pattern::create(WTFMove(*tileImage), parameters));
+}
 
-    WTFMove(item).apply(context());
+void RemoteDisplayListRecorder::setFillRule(WindRule rule)
+{
+    context().setFillRule(rule);
+}
+
+void RemoteDisplayListRecorder::setStrokePackedColor(WebCore::PackedColor::RGBA color)
+{
+    context().setStrokeColor(asSRGBA(color));
+}
+
+void RemoteDisplayListRecorder::setStrokeColor(const WebCore::Color& color)
+{
+    context().setStrokeColor(color);
+}
+
+void RemoteDisplayListRecorder::setStrokeCachedGradient(RenderingResourceIdentifier identifier, const AffineTransform& spaceTransform)
+{
+    RefPtr gradient = resourceCache().cachedGradient(identifier);
+    if (!gradient) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+    context().setStrokeGradient(gradient.releaseNonNull(), spaceTransform);
+}
+
+void RemoteDisplayListRecorder::setStrokeGradient(Ref<Gradient>&& gradient, const AffineTransform& spaceTransform)
+{
+    context().setStrokeGradient(WTFMove(gradient), spaceTransform);
+}
+
+void RemoteDisplayListRecorder::setStrokePattern(RenderingResourceIdentifier tileImageIdentifier, const PatternParameters& parameters)
+{
+    auto tileImage = sourceImage(tileImageIdentifier);
+    if (!tileImage) {
+        ASSERT_NOT_REACHED();
+        return;
+    }
+    context().setStrokePattern(Pattern::create(WTFMove(*tileImage), parameters));
+}
+
+void RemoteDisplayListRecorder::setStrokePackedColorAndThickness(PackedColor::RGBA color, float thickness)
+{
+    setStrokePackedColor(color);
+    setStrokeThickness(thickness);
+}
+
+void RemoteDisplayListRecorder::setStrokeThickness(float thickness)
+{
+    context().setStrokeThickness(thickness);
+}
+
+void RemoteDisplayListRecorder::setStrokeStyle(WebCore::StrokeStyle value)
+{
+    context().setStrokeStyle(value);
+}
+
+void RemoteDisplayListRecorder::setCompositeMode(WebCore::CompositeMode value)
+{
+    context().setCompositeMode(value);
+}
+
+void RemoteDisplayListRecorder::setDropShadow(std::optional<WebCore::GraphicsDropShadow> value)
+{
+    if (value)
+        context().setDropShadow(*value);
+    else
+        context().clearDropShadow();
+}
+
+void RemoteDisplayListRecorder::setStyle(std::optional<WebCore::GraphicsStyle> value)
+{
+    context().setStyle(value);
+}
+
+void RemoteDisplayListRecorder::setAlpha(float value)
+{
+    context().setAlpha(value);
+}
+
+void RemoteDisplayListRecorder::setTextDrawingMode(WebCore::TextDrawingModeFlags value)
+{
+    context().setTextDrawingMode(value);
+}
+
+void RemoteDisplayListRecorder::setImageInterpolationQuality(WebCore::InterpolationQuality value)
+{
+    context().setImageInterpolationQuality(value);
+}
+
+void RemoteDisplayListRecorder::setShouldAntialias(bool value)
+{
+    context().setShouldAntialias(value);
+}
+
+void RemoteDisplayListRecorder::setShouldSmoothFonts(bool value)
+{
+    context().setShouldSmoothFonts(value);
+}
+
+void RemoteDisplayListRecorder::setShouldSubpixelQuantizeFonts(bool value)
+{
+    context().setShouldSubpixelQuantizeFonts(value);
+}
+
+void RemoteDisplayListRecorder::setShadowsIgnoreTransforms(bool value)
+{
+    context().setShadowsIgnoreTransforms(value);
+}
+
+void RemoteDisplayListRecorder::setDrawLuminanceMask(bool value)
+{
+    context().setDrawLuminanceMask(value);
 }
 
 void RemoteDisplayListRecorder::setLineCap(LineCap lineCap)
@@ -182,9 +289,9 @@ void RemoteDisplayListRecorder::setLineCap(LineCap lineCap)
     context().setLineCap(lineCap);
 }
 
-void RemoteDisplayListRecorder::setLineDash(DashArray&& dashArray, float dashOffset)
+void RemoteDisplayListRecorder::setLineDash(FixedVector<double>&& dashArray, float dashOffset)
 {
-    context().setLineDash(dashArray, dashOffset);
+    context().setLineDash(DashArray(dashArray.span()), dashOffset);
 }
 
 void RemoteDisplayListRecorder::setLineJoin(LineJoin lineJoin)
@@ -195,11 +302,6 @@ void RemoteDisplayListRecorder::setLineJoin(LineJoin lineJoin)
 void RemoteDisplayListRecorder::setMiterLimit(float limit)
 {
     context().setMiterLimit(limit);
-}
-
-void RemoteDisplayListRecorder::clearDropShadow()
-{
-    context().clearDropShadow();
 }
 
 void RemoteDisplayListRecorder::clip(const FloatRect& rect)
@@ -302,7 +404,7 @@ void RemoteDisplayListRecorder::drawFilteredImageBuffer(std::optional<RenderingR
     drawFilteredImageBufferInternal(sourceImageIdentifier, sourceImageRect, *cachedSVGFilter, results);
 }
 
-void RemoteDisplayListRecorder::drawGlyphs(RenderingResourceIdentifier fontIdentifier, IPC::ArrayReferenceTuple<GlyphBufferGlyph, GlyphBufferAdvance> glyphsAdvances, FloatPoint localAnchor, FontSmoothingMode fontSmoothingMode)
+void RemoteDisplayListRecorder::drawGlyphs(RenderingResourceIdentifier fontIdentifier, IPC::ArrayReferenceTuple<GlyphBufferGlyph, FloatSize> glyphsAdvances, FloatPoint localAnchor, FontSmoothingMode fontSmoothingMode)
 {
     RefPtr font = resourceCache().cachedFont(fontIdentifier);
     if (!font) {
@@ -310,7 +412,7 @@ void RemoteDisplayListRecorder::drawGlyphs(RenderingResourceIdentifier fontIdent
         return;
     }
 
-    context().drawGlyphs(*font, Vector(glyphsAdvances.span<0>()), Vector(glyphsAdvances.span<(1)>()), localAnchor, fontSmoothingMode);
+    context().drawGlyphs(*font, glyphsAdvances.span<0>(), Vector<GlyphBufferAdvance>(glyphsAdvances.span<1>()), localAnchor, fontSmoothingMode);
 }
 
 void RemoteDisplayListRecorder::drawDecomposedGlyphs(RenderingResourceIdentifier fontIdentifier, RenderingResourceIdentifier decomposedGlyphsIdentifier)
@@ -366,21 +468,24 @@ void RemoteDisplayListRecorder::drawSystemImage(Ref<SystemImage>&& systemImage, 
     context().drawSystemImage(systemImage, destinationRect);
 }
 
-void RemoteDisplayListRecorder::drawPattern(RenderingResourceIdentifier imageIdentifier, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& transform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
+void RemoteDisplayListRecorder::drawPatternNativeImage(RenderingResourceIdentifier imageIdentifier, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& transform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
 {
-    auto patternImage = sourceImage(imageIdentifier);
-    if (!patternImage) {
+    RefPtr image = resourceCache().cachedNativeImage(imageIdentifier);
+    if (!image) {
         ASSERT_NOT_REACHED();
         return;
     }
-    if (RefPtr nativeImage = patternImage->nativeImageIfExists()) {
-        context().drawPattern(*nativeImage, destRect, tileRect, transform, phase, spacing, options);
+    context().drawPattern(*image, destRect, tileRect, transform, phase, spacing, options);
+}
+
+void RemoteDisplayListRecorder::drawPatternImageBuffer(RenderingResourceIdentifier imageIdentifier, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& transform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
+{
+    RefPtr image = imageBuffer(imageIdentifier);
+    if (!image) {
+        ASSERT_NOT_REACHED();
         return;
     }
-    if (RefPtr imageBuffer = patternImage->imageBufferIfExists()) {
-        context().drawPattern(*imageBuffer, destRect, tileRect, transform, phase, spacing, options);
-        return;
-    }
+    context().drawPattern(*image, destRect, tileRect, transform, phase, spacing, options);
 }
 
 void RemoteDisplayListRecorder::beginTransparencyLayer(float opacity)
@@ -554,7 +659,7 @@ void RemoteDisplayListRecorder::strokeRect(const FloatRect& rect, float lineWidt
 void RemoteDisplayListRecorder::strokeLine(const PathDataLine& line)
 {
 #if ENABLE(INLINE_PATH_DATA)
-    auto path = Path({ PathSegment { PathDataLine { { line.start }, { line.end } } } });
+    auto path = Path({ PathSegment { PathDataLine { { line.start() }, { line.end() } } } });
 #else
     Path path;
     path.moveTo(line.start);
@@ -565,7 +670,10 @@ void RemoteDisplayListRecorder::strokeLine(const PathDataLine& line)
 
 void RemoteDisplayListRecorder::strokeLineWithColorAndThickness(const PathDataLine& line, std::optional<PackedColor::RGBA> strokeColor, std::optional<float> strokeThickness)
 {
-    setInlineStroke(strokeColor, strokeThickness);
+    if (strokeColor)
+        setStrokePackedColor(*strokeColor);
+    if (strokeThickness)
+        setStrokeThickness(*strokeThickness);
     strokeLine(line);
 }
 

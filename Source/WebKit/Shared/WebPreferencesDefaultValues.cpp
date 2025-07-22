@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,7 +37,7 @@
 #endif
 #endif
 
-#if ENABLE(MEDIA_SESSION_COORDINATOR)
+#if ENABLE(MEDIA_SESSION_COORDINATOR) || HAVE(DIGITAL_CREDENTIALS_UI)
 #import "WebProcess.h"
 #import <wtf/cocoa/Entitlements.h>
 #endif
@@ -62,12 +62,6 @@ bool defaultPassiveTouchListenersAsDefaultOnDocument()
 {
     static bool result = linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::DefaultsToPassiveTouchListenersOnDocument);
     return result;
-}
-
-bool defaultCSSOMViewScrollingAPIEnabled()
-{
-    static bool result = WTF::IOSApplication::isIMDb() && !linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::NoIMDbCSSOMViewScrollingQuirk);
-    return !result;
 }
 
 bool defaultShouldPrintBackgrounds()
@@ -122,26 +116,11 @@ bool defaultAppleMailPaginationQuirkEnabled()
 
 bool defaultCaptureAudioInGPUProcessEnabled()
 {
-#if HAVE(REQUIRE_MICROPHONE_CAPTURE_IN_UIPROCESS)
-    // Newer versions can capture microphone in GPUProcess.
-    if (!WTF::MacApplication::isSafari())
-        return false;
-#endif
-
 #if ENABLE(GPU_PROCESS_BY_DEFAULT)
     return true;
 #else
     return false;
 #endif
-}
-
-bool defaultCaptureAudioInUIProcessEnabled()
-{
-#if PLATFORM(MAC)
-    return !defaultCaptureAudioInGPUProcessEnabled();
-#endif
-
-    return false;
 }
 
 bool defaultManageCaptureStatusBarInGPUProcessEnabled()
@@ -159,7 +138,7 @@ bool defaultManageCaptureStatusBarInGPUProcessEnabled()
 #if ENABLE(MEDIA_SOURCE)
 bool defaultManagedMediaSourceEnabled()
 {
-#if PLATFORM(COCOA)
+#if PLATFORM(COCOA) || PLATFORM(GTK) || PLATFORM(WPE)
     return true;
 #else
     return false;
@@ -232,16 +211,6 @@ bool defaultLinearMediaPlayerEnabled()
 #endif
 }
 
-bool defaultLiveRangeSelectionEnabled()
-{
-#if PLATFORM(IOS_FAMILY)
-    static bool enableForAllApps = linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::LiveRangeSelectionEnabledForAllApps);
-    if (!enableForAllApps && WTF::IOSApplication::isGmail())
-        return false;
-#endif
-    return true;
-}
-
 bool defaultShowModalDialogEnabled()
 {
 #if PLATFORM(COCOA)
@@ -267,7 +236,17 @@ bool defaultGamepadVibrationActuatorEnabled()
 bool defaultDigitalCredentialsEnabled()
 {
 #if HAVE(DIGITAL_CREDENTIALS_UI)
-    return true;
+    static dispatch_once_t onceToken;
+    static bool enabled { false };
+    dispatch_once(&onceToken, ^{
+        auto entitlementChecker = [inWebProcess = isInWebProcess()](auto entitlement) {
+            if (inWebProcess)
+                return WebProcess::singleton().parentProcessHasEntitlement(entitlement);
+            return WTF::processHasEntitlement(entitlement);
+        };
+        enabled = entitlementChecker("com.apple.developer.web-browser"_s) || entitlementChecker("com.apple.developer.identity-document-services.web-presentment-controller"_s);
+    });
+    return enabled;
 #else
     return false;
 #endif
@@ -348,6 +327,7 @@ bool defaultDeviceOrientationPermissionAPIEnabled()
 }
 #endif
 
+#if ENABLE(REQUIRES_PAGE_VISIBILITY_FOR_NOW_PLAYING)
 bool defaultRequiresPageVisibilityForVideoToBeNowPlaying()
 {
 #if USE(APPLE_INTERNAL_SDK)
@@ -357,6 +337,7 @@ bool defaultRequiresPageVisibilityForVideoToBeNowPlaying()
 
     return false;
 }
+#endif
 
 bool defaultCookieStoreAPIEnabled()
 {
@@ -417,5 +398,19 @@ bool defaultTrustedTypesEnabled()
     return true;
 #endif
 }
+
+#if !PLATFORM(COCOA)
+bool defaultContentInsetBackgroundFillEnabled()
+{
+    return false;
+}
+#endif
+
+#if !PLATFORM(COCOA)
+bool defaultTopContentInsetBackgroundCanChangeAfterScrolling()
+{
+    return false;
+}
+#endif
 
 } // namespace WebKit

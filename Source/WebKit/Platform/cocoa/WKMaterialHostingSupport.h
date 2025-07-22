@@ -26,6 +26,7 @@
 #pragma once
 
 #import <Foundation/Foundation.h>
+#import <wtf/PlatformHave.h>
 
 #if HAVE(MATERIAL_HOSTING)
 
@@ -37,10 +38,10 @@
 
 typedef NS_ENUM(NSInteger, WKHostedMaterialEffectType) {
     WKHostedMaterialEffectTypeNone,
-    WKHostedMaterialEffectTypeBlur,
-    WKHostedMaterialEffectTypeThinBlur,
-    WKHostedMaterialEffectTypeMediaControls,
-    WKHostedMaterialEffectTypeThinMediaControls,
+    WKHostedMaterialEffectTypeGlass,
+    WKHostedMaterialEffectTypeSubduedGlass,
+    WKHostedMaterialEffectTypeMediaControlsGlass,
+    WKHostedMaterialEffectTypeSubduedMediaControlsGlass,
 };
 
 typedef NS_ENUM(NSInteger, WKHostedMaterialColorScheme) {

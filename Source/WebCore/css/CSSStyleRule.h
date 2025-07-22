@@ -35,7 +35,7 @@ class StyleRule;
 class StyleRuleWithNesting;
 class StyleRuleCSSStyleProperties;
 
-class CSSStyleRule final : public CSSRule, public CanMakeWeakPtr<CSSStyleRule> {
+class CSSStyleRule final : public CSSRule {
 public:
     static Ref<CSSStyleRule> create(StyleRule& rule, CSSStyleSheet* sheet) { return adoptRef(*new CSSStyleRule(rule, sheet)); }
     static Ref<CSSStyleRule> create(StyleRuleWithNesting& rule, CSSStyleSheet* sheet) { return adoptRef(* new CSSStyleRule(rule, sheet)); };
@@ -67,7 +67,7 @@ private:
     String cssText(const CSS::SerializationContext&) const final;
     String cssTextInternal(StringBuilder& declarations, StringBuilder& rules) const;
     void reattach(StyleRuleBase&) final;
-    void getChildStyleSheets(UncheckedKeyHashSet<RefPtr<CSSStyleSheet>>&) final;
+    void getChildStyleSheets(HashSet<RefPtr<CSSStyleSheet>>&) final;
 
     String generateSelectorText() const;
     Vector<Ref<StyleRuleBase>> nestedRules() const;
@@ -75,11 +75,11 @@ private:
     void cssTextForRulesWithReplacementURLs(StringBuilder& rules, const CSS::SerializationContext&) const;
 
     Ref<StyleRule> m_styleRule;
-    Ref<DeclaredStylePropertyMap> m_styleMap;
+    const Ref<DeclaredStylePropertyMap> m_styleMap;
     RefPtr<StyleRuleCSSStyleProperties> m_propertiesCSSOMWrapper;
 
     mutable Vector<RefPtr<CSSRule>> m_childRuleCSSOMWrappers;
-    mutable std::unique_ptr<CSSRuleList> m_ruleListCSSOMWrapper;
+    const std::unique_ptr<CSSRuleList> m_ruleListCSSOMWrapper;
 };
 
 } // namespace WebCore

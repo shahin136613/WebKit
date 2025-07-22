@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2003, 2006, 2007 Apple Inc.  All rights reserved.
- * Copyright (C) 2005 Nokia.  All rights reserved.
+ * Copyright (C) 2003, 2006, 2007 Apple Inc. All rights reserved.
+ * Copyright (C) 2005 Nokia. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -154,12 +154,24 @@ void FloatRect::uniteIfNonZero(const FloatRect& other)
     uniteEvenIfEmpty(other);
 }
 
-void FloatRect::extend(const FloatPoint& p)
+void FloatRect::extend(FloatPoint p)
 {
     float minX = std::min(x(), p.x());
     float minY = std::min(y(), p.y());
     float maxX = std::max(this->maxX(), p.x());
     float maxY = std::max(this->maxY(), p.y());
+
+    setLocationAndSizeFromEdges(minX, minY, maxX, maxY);
+}
+
+void FloatRect::extend(FloatPoint minPoint, FloatPoint maxPoint)
+{
+    ASSERT(minPoint.x() <= maxPoint.x() && minPoint.y() <= maxPoint.y());
+
+    float minX = std::min(x(), minPoint.x());
+    float minY = std::min(y(), minPoint.y());
+    float maxX = std::max(this->maxX(), maxPoint.x());
+    float maxY = std::max(this->maxY(), maxPoint.y());
 
     setLocationAndSizeFromEdges(minX, minY, maxX, maxY);
 }

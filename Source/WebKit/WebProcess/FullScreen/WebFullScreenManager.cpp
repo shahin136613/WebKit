@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -37,6 +37,7 @@
 #include "WebPage.h"
 #include <WebCore/AddEventListenerOptions.h>
 #include <WebCore/Color.h>
+#include <WebCore/ContainerNodeInlines.h>
 #include <WebCore/DocumentFullscreen.h>
 #include <WebCore/EventNames.h>
 #include <WebCore/HTMLVideoElement.h>
@@ -47,6 +48,7 @@
 #include <WebCore/Quirks.h>
 #include <WebCore/RenderImage.h>
 #include <WebCore/RenderLayerBacking.h>
+#include <WebCore/RenderObjectInlines.h>
 #include <WebCore/RenderView.h>
 #include <WebCore/Settings.h>
 #include <WebCore/TypedElementDescendantIteratorInlines.h>
@@ -63,19 +65,31 @@ using namespace WebCore;
 
 using WebCore::FloatSize;
 
-static WebCore::IntRect screenRectOfContents(WebCore::Element* element)
+static WebCore::IntRect screenRectOfContents(WebCore::Element& element)
 {
-    ASSERT(element);
-    if (!element)
+    CheckedPtr renderer = element.renderer();
+    if (!renderer)
         return { };
 
-    if (element->renderer() && element->renderer()->hasLayer() && element->renderer()->enclosingLayer()->isComposited()) {
-        WebCore::FloatQuad contentsBox = static_cast<WebCore::FloatRect>(element->renderer()->enclosingLayer()->backing()->compositedBounds());
-        contentsBox = element->renderer()->localToAbsoluteQuad(contentsBox);
-        return element->renderer()->view().frameView().contentsToScreen(contentsBox.enclosingBoundingBox());
+    IntRect contentsRect = renderer->absoluteBoundingBoxRect();
+    if (contentsRect.isEmpty()) {
+        // A zero-height element may contain visible overflow contents. If the element
+        // itself is empty, traverse its children to find its visual content area.
+        LayoutRect topLevelRect;
+        contentsRect = snappedIntRect(renderer->paintingRootRect(topLevelRect));
     }
 
-    return element->screenRect();
+    if (contentsRect.isEmpty())
+        return { };
+
+    Ref frameView = renderer->view().frameView();
+
+    // The element may have contents which are far outside the viewport of the page.
+    // Clip the contents rect by the current viewport.
+    auto viewportRect = snappedIntRect(frameView->layoutViewportRect());
+    contentsRect.intersect(viewportRect);
+
+    return frameView->contentsToScreen(contentsRect);
 }
 
 Ref<WebFullScreenManager> WebFullScreenManager::create(WebPage& page)
@@ -87,7 +101,7 @@ WebFullScreenManager::WebFullScreenManager(WebPage& page)
     : WebCore::EventListener(WebCore::EventListener::CPPEventListenerType)
     , m_page(page)
 #if ENABLE(VIDEO) && ENABLE(IMAGE_ANALYSIS)
-    , m_mainVideoElementTextRecognitionTimer(RunLoop::main(), this, &WebFullScreenManager::mainVideoElementTextRecognitionTimerFired)
+    , m_mainVideoElementTextRecognitionTimer(RunLoop::mainSingleton(), this, &WebFullScreenManager::mainVideoElementTextRecognitionTimerFired)
 #endif
 #if !RELEASE_LOG_DISABLED
     , m_logger(page.logger())
@@ -188,7 +202,7 @@ void WebFullScreenManager::setElement(WebCore::Element& element)
 
     clearElement();
 
-    m_element = &element;
+    m_element = element;
     m_elementToRestore = element;
 
     for (auto& eventName : eventsToObserve())
@@ -267,7 +281,7 @@ void WebFullScreenManager::enterFullScreenForElement(Element& element, HTMLMedia
         return;
     }
 
-    if (auto* currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement())
+    if (RefPtr currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement())
         currentPlaybackControlsElement->prepareForVideoFullscreenStandby();
 #endif
 
@@ -275,11 +289,17 @@ void WebFullScreenManager::enterFullScreenForElement(Element& element, HTMLMedia
     if (CheckedPtr renderImage = dynamicDowncast<RenderImage>(element.renderer()))
         mediaDetails = getImageMediaDetails(renderImage, IsUpdating::No);
 
-    if (m_willUseQuickLookForFullscreen)
+    if (m_willUseQuickLookForFullscreen) {
         m_page->freezeLayerTree(WebPage::LayerTreeFreezeReason::OutOfProcessFullscreen);
+        static constexpr auto maxViewportSize = FloatSize { 10000, 10000 };
+        m_oldSize = m_page->viewportConfiguration().viewLayoutSize();
+        m_scaleFactor = m_page->viewportConfiguration().layoutSizeScaleFactor();
+        m_minEffectiveWidth = m_page->viewportConfiguration().minimumEffectiveDeviceWidth();
+        m_page->setViewportConfigurationViewLayoutSize(maxViewportSize, m_scaleFactor, m_minEffectiveWidth);
+    }
 #endif
 
-    m_initialFrame = screenRectOfContents(m_element.get());
+    m_initialFrame = screenRectOfContents(element);
 
 #if ENABLE(VIDEO)
     updateMainVideoElement();
@@ -305,16 +325,15 @@ void WebFullScreenManager::enterFullScreenForElement(Element& element, HTMLMedia
 
     m_page->prepareToEnterElementFullScreen();
 
+    if (RefPtr page = m_page->corePage()) {
+        if (RefPtr view = page->mainFrame().virtualView())
+            m_scrollPosition = view->scrollPosition();
+    }
+
     if (mode == HTMLMediaElementEnums::VideoFullscreenModeInWindow) {
         willEnterFullScreen(element, WTFMove(willEnterFullScreenCallback), WTFMove(didEnterFullScreenCallback), mode);
         m_inWindowFullScreenMode = true;
     } else {
-
-        if (RefPtr page = m_page->corePage()) {
-            if (RefPtr view = page->mainFrame().virtualView())
-                m_scrollPosition = view->scrollPosition();
-        }
-
         m_page->sendWithAsyncReply(Messages::WebFullScreenManagerProxy::EnterFullScreen(frameID, m_element->document().quirks().blocksReturnToFullscreenFromPictureInPictureQuirk(), WTFMove(mediaDetails)), [
             this,
             protectedThis = Ref { *this },
@@ -336,6 +355,9 @@ void WebFullScreenManager::enterFullScreenForElement(Element& element, HTMLMedia
 #if ENABLE(QUICKLOOK_FULLSCREEN)
 void WebFullScreenManager::updateImageSource(WebCore::Element& element)
 {
+    if (&element != m_element)
+        return;
+
     FullScreenMediaDetails mediaDetails;
     CheckedPtr renderImage = dynamicDowncast<RenderImage>(element.renderer());
     if (renderImage && m_willUseQuickLookForFullscreen) {
@@ -384,7 +406,7 @@ void WebFullScreenManager::willEnterFullScreen(Element& element, CompletionHandl
     m_page->hidePageBanners();
 #endif
     element.protectedDocument()->updateLayout();
-    m_finalFrame = screenRectOfContents(&element);
+    m_finalFrame = screenRectOfContents(element);
 
     m_page->sendWithAsyncReply(Messages::WebFullScreenManagerProxy::BeganEnterFullScreen(m_initialFrame, m_finalFrame), [this, protectedThis = Ref { *this }, mode, completionHandler = WTFMove(didEnterFullscreenCallback)] (bool success) mutable {
         if (!success && mode != WebCore::HTMLMediaElementEnums::VideoFullscreenModeInWindow) {
@@ -409,19 +431,9 @@ void WebFullScreenManager::didEnterFullScreen(CompletionHandler<bool(bool)>&& co
         return;
     }
 
-#if ENABLE(QUICKLOOK_FULLSCREEN)
-    static constexpr auto maxViewportSize = FloatSize { 10000, 10000 };
-    if (m_willUseQuickLookForFullscreen) {
-        m_oldSize = m_page->viewportConfiguration().viewLayoutSize();
-        m_scaleFactor = m_page->viewportConfiguration().layoutSizeScaleFactor();
-        m_minEffectiveWidth = m_page->viewportConfiguration().minimumEffectiveDeviceWidth();
-        m_page->setViewportConfigurationViewLayoutSize(maxViewportSize, m_scaleFactor, m_minEffectiveWidth);
-    }
-#endif
-
 #if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
-    auto* currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement();
-    setPIPStandbyElement(dynamicDowncast<WebCore::HTMLVideoElement>(currentPlaybackControlsElement));
+    RefPtr currentPlaybackControlsElement = m_page->playbackSessionManager().currentPlaybackControlsElement();
+    setPIPStandbyElement(dynamicDowncast<WebCore::HTMLVideoElement>(currentPlaybackControlsElement.get()));
 #endif
 
 #if ENABLE(VIDEO)
@@ -442,8 +454,8 @@ void WebFullScreenManager::updateMainVideoElement()
 
         RefPtr<WebCore::HTMLVideoElement> mainVideo;
         WebCore::FloatRect mainVideoBounds;
-        for (auto& video : WebCore::descendantsOfType<WebCore::HTMLVideoElement>(*m_element)) {
-            auto rendererAndBounds = video.boundingAbsoluteRectWithoutLayout();
+        for (Ref video : WebCore::descendantsOfType<WebCore::HTMLVideoElement>(*m_element)) {
+            auto rendererAndBounds = video->boundingAbsoluteRectWithoutLayout();
             if (!rendererAndBounds)
                 continue;
 
@@ -455,7 +467,7 @@ void WebFullScreenManager::updateMainVideoElement()
                 continue;
 
             mainVideoBounds = bounds;
-            mainVideo = &video;
+            mainVideo = WTFMove(video);
         }
         return mainVideo;
     }());
@@ -473,7 +485,7 @@ void WebFullScreenManager::willExitFullScreen(CompletionHandler<void()>&& comple
     setPIPStandbyElement(nullptr);
 #endif
 
-    m_finalFrame = screenRectOfContents(m_element.get());
+    m_finalFrame = screenRectOfContents(*m_element);
     if (!m_element->document().fullscreen().willExitFullscreen()) {
         close();
         return completionHandler();
@@ -494,7 +506,7 @@ static Vector<Ref<Element>> collectFullscreenElementsFromElement(Element* elemen
 
     while (element && element->document().fullscreen().fullscreenElement() == element) {
         fullscreenElements.append(*element);
-        auto parentDocument = element->document().parentDocument();
+        RefPtr parentDocument = element->document().parentDocument();
         element = parentDocument ? parentDocument->fullscreen().fullscreenElement() : nullptr;
     }
 

@@ -47,7 +47,7 @@ enum class MappedFileMode : bool {
 };
 
 class MappedFileData {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(MappedFileData);
 public:
     MappedFileData() = default;
     WTF_EXPORT_PRIVATE ~MappedFileData();
@@ -58,7 +58,7 @@ public:
 #if HAVE(MMAP)
     explicit MappedFileData(MallocSpan<uint8_t, Mmap>&&);
 
-    std::span<uint8_t> leakHandle() { return m_fileData.leakSpan(); }
+    std::span<uint8_t> leakHandle() WARN_UNUSED_RETURN { return m_fileData.leakSpan(); }
     explicit operator bool() const { return !!m_fileData; }
     size_t size() const { return m_fileData.span().size(); }
     std::span<const uint8_t> span() const LIFETIME_BOUND { return m_fileData.span(); }

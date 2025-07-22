@@ -169,13 +169,6 @@ void AcceleratedSurfaceDMABuf::RenderTarget::willRenderFrame()
     glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
 }
 
-void AcceleratedSurfaceDMABuf::RenderTarget::didRenderFrame()
-{
-#if ENABLE(DAMAGE_TRACKING)
-    m_damage = WebCore::Damage { };
-#endif
-}
-
 void AcceleratedSurfaceDMABuf::RenderTarget::setReleaseFenceFD(UnixFileDescriptor&& releaseFence)
 {
     m_releaseFenceFD = WTFMove(releaseFence);
@@ -203,7 +196,7 @@ std::unique_ptr<AcceleratedSurfaceDMABuf::RenderTarget> AcceleratedSurfaceDMABuf
     uint32_t flags = dmabufFormat.usage == DMABufRendererBufferFormat::Usage::Scanout ? GBM_BO_USE_SCANOUT : GBM_BO_USE_RENDERING;
     bool disableModifiers = dmabufFormat.modifiers.size() == 1 && dmabufFormat.modifiers[0] == DRM_FORMAT_MOD_INVALID;
     if (!disableModifiers && !dmabufFormat.modifiers.isEmpty())
-        bo = gbm_bo_create_with_modifiers2(device, size.width(), size.height(), dmabufFormat.fourcc, dmabufFormat.modifiers.data(), dmabufFormat.modifiers.size(), flags);
+        bo = gbm_bo_create_with_modifiers2(device, size.width(), size.height(), dmabufFormat.fourcc, dmabufFormat.modifiers.span().data(), dmabufFormat.modifiers.size(), flags);
 
     if (!bo) {
         if (dmabufFormat.usage == DMABufRendererBufferFormat::Usage::Mapping)
@@ -367,7 +360,7 @@ std::unique_ptr<AcceleratedSurfaceDMABuf::RenderTarget> AcceleratedSurfaceDMABuf
     Vector<int> fdsOut(planeCount);
     Vector<int> stridesOut(planeCount);
     Vector<int> offsetsOut(planeCount);
-    if (!eglExportDMABUFImageMESA(display.eglDisplay(), image, fdsOut.data(), stridesOut.data(), offsetsOut.data())) {
+    if (!eglExportDMABUFImageMESA(display.eglDisplay(), image, fdsOut.mutableSpan().data(), stridesOut.mutableSpan().data(), offsetsOut.mutableSpan().data())) {
         WTFLogAlways("eglExportDMABUFImageMESA failed");
         display.destroyEGLImage(image);
         glDeleteTextures(1, &texture);
@@ -552,7 +545,7 @@ void AcceleratedSurfaceDMABuf::SwapChain::releaseTarget(uint64_t targetID, UnixF
     if (index != notFound) {
         m_lockedTargets[index]->setReleaseFenceFD(WTFMove(releaseFence));
         m_freeTargets.insert(0, WTFMove(m_lockedTargets[index]));
-        m_lockedTargets.remove(index);
+        m_lockedTargets.removeAt(index);
     }
 }
 
@@ -686,6 +679,7 @@ void AcceleratedSurfaceDMABuf::didRenderFrame()
 
     Vector<WebCore::IntRect, 1> damageRects;
 #if ENABLE(DAMAGE_TRACKING)
+    m_target->setDamage(WebCore::Damage(m_size));
     if (m_frameDamage) {
         damageRects = m_frameDamage->rects();
         m_frameDamage = std::nullopt;
@@ -696,13 +690,8 @@ void AcceleratedSurfaceDMABuf::didRenderFrame()
 }
 
 #if ENABLE(DAMAGE_TRACKING)
-const std::optional<WebCore::Damage>& AcceleratedSurfaceDMABuf::addDamage(WebCore::Damage&& damage)
+const std::optional<WebCore::Damage>& AcceleratedSurfaceDMABuf::frameDamageSinceLastUse()
 {
-    if (!damage.isEmpty())
-        m_frameDamage = WTFMove(damage);
-    else
-        m_frameDamage = std::nullopt;
-
     m_swapChain.addDamage(m_frameDamage);
     ASSERT(m_target);
     return m_target->damage();

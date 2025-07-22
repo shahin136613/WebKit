@@ -285,7 +285,6 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         let elementsSettingsView = new WI.SettingsView("elements", WI.UIString("Elements"));
 
         // COMPATIBILITY (macOS 13.0, iOS 16.0): CSS.LayoutFlag.Rendered did not exist yet.
-        console.log(InspectorBackend.Enum.CSS);
         if (InspectorBackend.Enum.CSS?.LayoutFlag?.Rendered) {
             elementsSettingsView.addSetting(WI.UIString("DOM Tree:"), WI.settings.domTreeDeemphasizesNodesThatAreNotRendered, WI.UIString("De-emphasize nodes that are not rendered"));
 
@@ -435,15 +434,6 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
         let sourcesGroup = experimentalSettingsView.addGroup(WI.UIString("Sources:"));
         sourcesGroup.addSetting(WI.settings.experimentalLimitSourceCodeHighlighting, WI.UIString("Limit syntax highlighting on long lines of code"));
         sourcesGroup.addSetting(WI.settings.experimentalUseFuzzyMatchingForCSSCodeCompletion, WI.UIString("Use fuzzy matching for CSS code completion"));
-        sourcesGroup.addSetting(WI.settings.experimentalVirtualizeSourcesNavigationSidebarTreeOutline, WI.UIString("Limit number of resources in navigation sidebar"));
-
-        experimentalSettingsView.addSeparator();
-
-        let hasTimelineDomain = InspectorBackend.hasDomain("Timeline");
-        if (hasTimelineDomain) {
-            let timelinesGroup = experimentalSettingsView.addGroup(WI.UIString("Timelines:", "Timelines: @ Experimental Settings", "Category label for experimental settings related to the Timelines Tab."));
-            timelinesGroup.addSetting(WI.settings.experimentalEnableWorkerTimelineRecording, WI.UIString("Enable recording in Workers", "Label for checkbox that controls whether timeline recordings can capture activity in Worker contexts."));
-        }
 
         experimentalSettingsView.addSeparator();
 
@@ -481,10 +471,6 @@ WI.SettingsTabContentView = class SettingsTabContentView extends WI.TabContentVi
 
         listenForChange(WI.settings.experimentalLimitSourceCodeHighlighting);
         listenForChange(WI.settings.experimentalUseFuzzyMatchingForCSSCodeCompletion);
-        listenForChange(WI.settings.experimentalVirtualizeSourcesNavigationSidebarTreeOutline);
-
-        if (hasTimelineDomain)
-            listenForChange(WI.settings.experimentalEnableWorkerTimelineRecording);
 
         this._createReferenceLink(experimentalSettingsView);
 

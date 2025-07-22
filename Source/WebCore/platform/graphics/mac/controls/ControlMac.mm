@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2023 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2022-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,6 +55,8 @@ ControlMac::ControlMac(ControlPart& owningPart, ControlFactoryMac& controlFactor
     , m_controlFactory(controlFactory)
 {
 }
+
+ControlMac::~ControlMac() = default;
 
 bool ControlMac::userPrefersContrast()
 {
@@ -215,15 +217,11 @@ static void applyViewlessCellSettings(float deviceScaleFactor, const ControlStyl
     [cell _setFallbackBezelPresentationState:isInActiveWindow ? NSPresentationStateActiveKey : NSPresentationStateInactive];
 #endif
 
-#if USE(NSVIEW_SEMANTICCONTEXT)
     if (style.states.contains(ControlStyle::State::FormSemanticContext))
         [cell _setFallbackSemanticContext:NSViewSemanticContextForm];
-#else
-    UNUSED_PARAM(style);
-#endif
 }
 
-static void performDrawingWithUnflippedContext(GraphicsContext& context, const FloatRect& rect, Function<void(const FloatRect&)>&& draw)
+static void performDrawingWithUnflippedContext(GraphicsContext& context, const FloatRect& rect, NOESCAPE const Function<void(const FloatRect&)>& draw)
 {
     auto adjustedRect = rect;
 

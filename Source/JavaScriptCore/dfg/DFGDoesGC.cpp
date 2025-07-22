@@ -85,7 +85,7 @@ bool doesGC(Graph& graph, Node* node)
     case ArithBitXor:
     case ArithBitLShift:
     case ArithBitRShift:
-    case BitURShift:
+    case ArithBitURShift:
     case ValueToInt32:
     case UInt32ToNumber:
     case DoubleAsInt32:
@@ -121,6 +121,7 @@ bool doesGC(Graph& graph, Node* node)
     case CheckArrayOrEmpty:
     case CheckDetached:
     case GetScope:
+    case GetEvalScope:
     case SkipScope:
     case GetGlobalObject:
     case GetGlobalThis:
@@ -275,6 +276,8 @@ bool doesGC(Graph& graph, Node* node)
     case PutByOffset:
     case WeakMapGet:
     case NumberIsNaN:
+    case NumberIsFinite:
+    case NumberIsSafeInteger:
         return false;
 
 #if ASSERT_ENABLED
@@ -365,6 +368,7 @@ bool doesGC(Graph& graph, Node* node)
     case RegExpMatchFastGlobal:
     case RegExpTest:
     case RegExpTestInline:
+    case RegExpSearch:
     case ResolveScope:
     case ResolveScopeForHoistingFuncDeclInEval:
     case Return:
@@ -464,6 +468,7 @@ bool doesGC(Graph& graph, Node* node)
     case ValueBitXor:
     case ValueBitLShift:
     case ValueBitRShift:
+    case ValueBitURShift:
     case ValueAdd:
     case ValueSub:
     case ValueMul:
@@ -483,10 +488,9 @@ bool doesGC(Graph& graph, Node* node)
 
     case ToIntegerOrInfinity:
     case ToLength:
-        return node->child1().useKind() == UntypedUse;
-
+    case GlobalIsFinite:
     case GlobalIsNaN:
-        return node->child1().useKind() != DoubleRepUse;
+        return node->child1().useKind() == UntypedUse;
 
     case CallNumberConstructor:
         switch (node->child1().useKind()) {
@@ -571,6 +575,12 @@ bool doesGC(Graph& graph, Node* node)
             return true;
         return false;
 
+    case MultiGetByVal:
+        return true;
+
+    case MultiPutByVal:
+        return true;
+
     case ResolveRope:
         return true;
 
@@ -635,7 +645,7 @@ bool doesGC(Graph& graph, Node* node)
         switch (node->switchData()->kind) {
         case SwitchCell:
             ASSERT(graph.m_plan.isFTL());
-            FALLTHROUGH;
+            [[fallthrough]];
         case SwitchImm:
             return false;
         case SwitchChar:

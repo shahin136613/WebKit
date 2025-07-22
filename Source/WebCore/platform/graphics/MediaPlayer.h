@@ -76,7 +76,7 @@ typedef struct CF_BRIDGED_TYPE(id) __CVBuffer* CVPixelBufferRef;
 #endif
 
 namespace WTF {
-class MachSendRight;
+struct MachSendRightAnnotated;
 }
 
 namespace WebCore {
@@ -94,6 +94,7 @@ class DestinationColorSpace;
 class GraphicsContextGL;
 class GraphicsContext;
 class InbandTextTrackPrivate;
+class MessageClientForTesting;
 class LegacyCDM;
 class LegacyCDMSession;
 class LegacyCDMSessionClient;
@@ -106,13 +107,14 @@ class MediaStreamPrivate;
 class NativeImage;
 class PlatformMediaResourceLoader;
 class PlatformTimeRanges;
+class SecurityOriginData;
 class SharedBuffer;
 class TextTrackRepresentation;
 class VideoFrame;
 class VideoTrackPrivate;
 
 struct GraphicsDeviceAdapter;
-class SecurityOriginData;
+struct HostingContext;
 struct VideoFrameMetadata;
 
 struct MediaEngineSupportParameters {
@@ -131,7 +133,7 @@ struct MediaEngineSupportParameters {
 };
 
 struct SeekTarget {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(SeekTarget);
     SeekTarget(const MediaTime& targetTime, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold)
         : time(targetTime)
         , negativeThreshold(negativeThreshold)
@@ -180,6 +182,7 @@ struct MediaPlayerLoadOptions {
     ContentType contentType { };
     bool requiresRemotePlayback { false };
     bool supportsLimitedMatroska { false };
+    VideoMediaSampleRendererPreferences videoMediaSampleRendererPreferences { };
 };
 
 class MediaPlayerClient : public CanMakeWeakPtr<MediaPlayerClient> {
@@ -286,6 +289,7 @@ public:
     virtual void mediaPlayerDidRemoveAudioTrack(AudioTrackPrivate&) { }
     virtual void mediaPlayerDidRemoveTextTrack(InbandTextTrackPrivate&) { }
     virtual void mediaPlayerDidRemoveVideoTrack(VideoTrackPrivate&) { }
+    virtual void mediaPlayerDidReportGPUMemoryFootprint(size_t) { }
 
     virtual void mediaPlayerReloadAndResumePlaybackIfNeeded() { }
 
@@ -334,8 +338,6 @@ public:
 #if PLATFORM(COCOA)
     virtual void mediaPlayerOnNewVideoFrameMetadata(VideoFrameMetadata&&, RetainPtr<CVPixelBufferRef>&&) { }
 #endif
-
-    virtual bool mediaPlayerPrefersSandboxedParsing() const { return false; }
 
     virtual bool mediaPlayerShouldDisableHDR() const { return false; }
 
@@ -405,12 +407,12 @@ public:
     bool isVideoFullscreenStandby() const;
 #endif
 
-    using LayerHostingContextIDCallback = CompletionHandler<void(LayerHostingContextID)>;
-    void requestHostingContextID(LayerHostingContextIDCallback&&);
-    LayerHostingContextID hostingContextID() const;
+    using LayerHostingContextCallback = CompletionHandler<void(HostingContext)>;
+    void requestHostingContext(LayerHostingContextCallback&&);
+    HostingContext hostingContext() const;
     FloatSize videoLayerSize() const;
     void videoLayerSizeDidChange(const FloatSize&);
-    void setVideoLayerSizeFenced(const FloatSize&, WTF::MachSendRight&&);
+    void setVideoLayerSizeFenced(const FloatSize&, WTF::MachSendRightAnnotated&&);
 
 #if PLATFORM(IOS_FAMILY)
     NSArray *timedMetadata() const;
@@ -681,6 +683,8 @@ public:
 
     size_t extraMemoryCost() const;
 
+    void reportGPUMemoryFootprint(uint64_t) const;
+
     unsigned long long fileSize() const;
 
     std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics();
@@ -719,7 +723,6 @@ public:
 
 #if USE(AVFOUNDATION)
     AVPlayer *objCAVFoundationAVPlayer() const;
-    void setDecompressionSessionPreferences(bool, bool);
 #endif
 
     bool performTaskAtTime(Function<void()>&&, const MediaTime&);
@@ -768,8 +771,6 @@ public:
 
     String lastErrorMessage() const;
 
-    bool prefersSandboxedParsing() const { return client().mediaPlayerPrefersSandboxedParsing(); }
-
     void renderVideoWillBeDestroyed();
 
     void setShouldDisableHDR(bool);
@@ -810,6 +811,9 @@ public:
     void setSceneIdentifier(const String&);
     const String& sceneIdentifier() const { return m_sceneIdentifier; }
 #endif
+
+    void setMessageClientForTesting(WeakPtr<MessageClientForTesting>);
+    MessageClientForTesting* messageClientForTesting() const;
 
 private:
     MediaPlayer(MediaPlayerClient&);
@@ -874,14 +878,12 @@ private:
 
     String m_lastErrorMessage;
     ProcessIdentity m_processIdentity;
-#if USE(AVFOUNDATION)
-    bool m_preferDecompressionSession { false };
-    bool m_canFallbackToDecompressionSession { false };
-#endif
 
 #if PLATFORM(IOS_FAMILY)
     String m_sceneIdentifier;
 #endif
+
+    WeakPtr<MessageClientForTesting> m_internalMessageClient;
 };
 
 class MediaPlayerFactory : public CanMakeWeakPtr<MediaPlayerFactory> {

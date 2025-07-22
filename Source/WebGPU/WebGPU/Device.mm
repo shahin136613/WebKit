@@ -46,6 +46,7 @@
 #import "XRSubImage.h"
 #import <algorithm>
 #import <notify.h>
+#import <ranges>
 #import <wtf/StdLibExtras.h>
 #import <wtf/TZoneMallocInlines.h>
 #import <wtf/WeakPtr.h>
@@ -253,26 +254,47 @@ Ref<Device> Device::create(id<MTLDevice> device, String&& deviceLabel, HardwareC
 
 static uint32_t computeMaxCountForDevice(id<MTLDevice> device)
 {
-    size_t result = 200 * MB;
-#if ENABLE(WEBGPU_BY_DEFAULT)
+#if HAVE(METAL_FAMILY_9)
     if ([device supportsFamily:MTLGPUFamilyApple9])
-        result = 300 * MB;
-    else if ([device supportsFamily:MTLGPUFamilyApple8])
-        result = 275 * MB;
-    else
+        return 300 * MB;
+#endif
+#if HAVE(METAL_FAMILY_8)
+    if ([device supportsFamily:MTLGPUFamilyApple8])
+        return 275 * MB;
 #endif
     if ([device supportsFamily:MTLGPUFamilyApple7])
-        result = 250 * MB;
-    else if ([device supportsFamily:MTLGPUFamilyApple6])
-        result = 225 * MB;
-    else if ([device supportsFamily:MTLGPUFamilyApple5])
-        result = 200 * MB;
-    else if ([device supportsFamily:MTLGPUFamilyApple4])
-        result = 200 * MB;
-    else if ([device supportsFamily:MTLGPUFamilyMac2])
-        result = 300 * MB;
+        return 250 * MB;
+    if ([device supportsFamily:MTLGPUFamilyApple6])
+        return 225 * MB;
+    if ([device supportsFamily:MTLGPUFamilyApple5])
+        return 200 * MB;
+    if ([device supportsFamily:MTLGPUFamilyApple4])
+        return 200 * MB;
+    if ([device supportsFamily:MTLGPUFamilyMac2])
+        return 300 * MB;
 
-    return result;
+    return 200 * MB;
+}
+
+static uint32_t computeAppleGPUFamily(id<MTLDevice> device)
+{
+#if HAVE(METAL_FAMILY_9)
+    if ([device supportsFamily:MTLGPUFamilyApple9])
+        return 9;
+#endif
+#if HAVE(METAL_FAMILY_8)
+    if ([device supportsFamily:MTLGPUFamilyApple8])
+        return 8;
+#endif
+    if ([device supportsFamily:MTLGPUFamilyApple7])
+        return 7;
+    if ([device supportsFamily:MTLGPUFamilyApple6])
+        return 6;
+    if ([device supportsFamily:MTLGPUFamilyApple5])
+        return 5;
+    if ([device supportsFamily:MTLGPUFamilyApple4])
+        return 4;
+    return 0xFF;
 }
 
 Device::Device(id<MTLDevice> device, id<MTLCommandQueue> defaultQueue, HardwareCapabilities&& capabilities, Adapter& adapter)
@@ -282,6 +304,7 @@ Device::Device(id<MTLDevice> device, id<MTLCommandQueue> defaultQueue, HardwareC
     , m_capabilities(WTFMove(capabilities))
     , m_adapter(adapter)
     , m_instance(adapter.weakInstance())
+    , m_appleGPUFamily(computeAppleGPUFamily(device))
     , m_maxVerticesPerDrawCall(computeMaxCountForDevice(device))
 {
 #if ENABLE(WEBGPU_SWIFT)
@@ -357,12 +380,7 @@ Device::Device(id<MTLDevice> device, id<MTLCommandQueue> defaultQueue, HardwareC
     m_sampleCounterBuffers = [NSMapTable weakToStrongObjectsMapTable];
     m_resolvedSampleCounterBuffers = [NSMapTable weakToStrongObjectsMapTable];
 
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // Workaround for rdar://141660277
-        if ((m_shaderValidationEnabled = [NSStringFromClass([m_device class]) containsString:@"Debug"]))
-            WTFLogAlways("WebGPU: Using DEBUG Metal device: retaining references"); // NOLINT
-    });
+    m_shaderValidationEnabled = WebGPU::isShaderValidationEnabled(m_device);
 }
 
 Device::Device(Adapter& adapter)
@@ -451,7 +469,7 @@ size_t Device::enumerateFeatures(WGPUFeatureName* features)
     // The API contract for this requires that sufficient space has already been allocated for the output.
     // This requires the caller calling us twice: once to get the amount of space to allocate, and once to fill the space.
     if (features)
-        std::copy(m_capabilities.features.begin(), m_capabilities.features.end(), features);
+        std::ranges::copy(m_capabilities.features, features);
     return m_capabilities.features.size();
 }
 
@@ -713,6 +731,10 @@ id<MTLRenderPipelineState> Device::indexBufferClampPipeline(MTLIndexType indexTy
         bool negativeCondition = indexedOutput.baseVertex + data[primitiveRestart] < indexedOutput.baseVertex;
         if (negativeCondition || (vertexIndex + indexedOutput.baseVertex >= data[vertexCount] + data[primitiveRestart])) {
             indexedOutput.indexCount = 0u;
+            indexedOutput.instanceCount = 0u;
+            indexedOutput.indexStart = 0u;
+            indexedOutput.baseVertex = 0u;
+            indexedOutput.baseInstance = 0u;
             wkindexedOutput.lostOrOOBRead = 1;
         }
     }
@@ -724,6 +746,10 @@ id<MTLRenderPipelineState> Device::indexBufferClampPipeline(MTLIndexType indexTy
         bool negativeCondition = indexedOutput.baseVertex + data[primitiveRestart] < indexedOutput.baseVertex;
         if (negativeCondition || (vertexIndex + indexedOutput.baseVertex >= data[vertexCount] + data[primitiveRestart])) {
             indexedOutput.indexCount = 0u;
+            indexedOutput.instanceCount = 0u;
+            indexedOutput.indexStart = 0u;
+            indexedOutput.baseVertex = 0u;
+            indexedOutput.baseInstance = 0u;
             wkindexedOutput.lostOrOOBRead = 1;
         }
     })" /* NOLINT */ options:options error:&error];
@@ -781,9 +807,11 @@ id<MTLRenderPipelineState> Device::indexedIndirectBufferClampPipeline(NSUInteger
         /* NOLINT */ id<MTLLibrary> library = [m_device newLibraryWithSource:[NSString stringWithFormat:@R"(
     using namespace metal;
     )"  OBJC_STRINGIFY(WEBKIT_DRAW_INDIRECT_STRUCT_TYPE)   @R"(
-    [[vertex]] void vsIndexedIndirect(device const MTLDrawIndexedPrimitivesIndirectArguments& input [[buffer(0)]], device MTLDrawIndexedPrimitivesIndirectArguments& indexedOutput [[buffer(1)]], device WebKitMTLDrawPrimitivesIndirectArguments& wkoutput [[buffer(2)]], const constant uint* indexBufferCount [[buffer(3)]])
+    )"  OBJC_STRINGIFY(WEBKIT_DRAW_INDEXED_INDIRECT_STRUCT_TYPE)   @R"(
+    [[vertex]] void vsIndexedIndirect(device const MTLDrawIndexedPrimitivesIndirectArguments& input [[buffer(0)]], device WebKitMTLDrawIndexedPrimitivesIndirectArguments& wkindexedOutput [[buffer(1)]], device WebKitMTLDrawPrimitivesIndirectArguments& wkoutput [[buffer(2)]], const constant uint* indexBufferCount [[buffer(3)]])
     {
         device MTLDrawPrimitivesIndirectArguments& output = wkoutput.args;
+        device MTLDrawIndexedPrimitivesIndirectArguments& indexedOutput = wkindexedOutput.args;
         bool lostCondition = input.indexCount > %u || input.instanceCount > %u || input.indexCount * input.instanceCount > %u;
         bool condition = lostCondition
             || input.indexCount + input.indexStart > indexBufferCount[0]
@@ -958,10 +986,11 @@ id<MTLFunction> Device::icbCommandClampFunction(MTLIndexType indexType)
         uint32_t minVertexCount { UINT_MAX };
         uint32_t minInstanceCount { UINT_MAX };
         device ushort* indexBuffer;
+        uint32_t indexBufferElementCountMinusOne;
         uint32_t indexCount { 0 };
         uint32_t instanceCount { 0 };
         uint32_t firstIndex { 0 };
-        int32_t baseVertex { 0 };
+        uint32_t baseVertex { 0 };
         uint32_t baseInstance { 0 };
         primitive_type primitiveType { primitive_type::triangle };
     };
@@ -970,10 +999,11 @@ id<MTLFunction> Device::icbCommandClampFunction(MTLIndexType indexType)
         uint32_t minVertexCount { UINT_MAX };
         uint32_t minInstanceCount { UINT_MAX };
         device uint* indexBuffer;
+        uint32_t indexBufferElementCountMinusOne;
         uint32_t indexCount { 0 };
         uint32_t instanceCount { 0 };
         uint32_t firstIndex { 0 };
-        int32_t baseVertex { 0 };
+        uint32_t baseVertex { 0 };
         uint32_t baseInstance { 0 };
         primitive_type primitiveType { primitive_type::triangle };
     };
@@ -988,7 +1018,7 @@ id<MTLFunction> Device::icbCommandClampFunction(MTLIndexType indexType)
     {
         device const IndexDataUint& data = *indexData;
         uint32_t k = (data.primitiveType == primitive_type::triangle_strip || data.primitiveType == primitive_type::line_strip) ? 1 : 0;
-        uint32_t indexBufferValue = data.indexBuffer[indexId + data.firstIndex];
+        uint32_t indexBufferValue = data.indexBuffer[min(data.indexBufferElementCountMinusOne, indexId + data.firstIndex)];
         uint32_t vertexIndex = indexBufferValue + k;
         bool negativeCondition = data.baseVertex + k < data.baseVertex;
         if (negativeCondition || (data.baseVertex + vertexIndex >= data.minVertexCount + k)) {
@@ -1009,7 +1039,7 @@ id<MTLFunction> Device::icbCommandClampFunction(MTLIndexType indexType)
     {
         device const IndexDataUshort& data = *indexData;
         uint32_t k = (data.primitiveType == primitive_type::triangle_strip || data.primitiveType == primitive_type::line_strip) ? 1 : 0;
-        ushort indexBufferValue = data.indexBuffer[indexId + data.firstIndex];
+        ushort indexBufferValue = data.indexBuffer[min(data.indexBufferElementCountMinusOne, indexId + data.firstIndex)];
         ushort vertexIndex = indexBufferValue + k;
         bool negativeCondition = data.baseVertex + k < data.baseVertex;
         if (negativeCondition || (data.baseVertex + vertexIndex >= data.minVertexCount + k)) {

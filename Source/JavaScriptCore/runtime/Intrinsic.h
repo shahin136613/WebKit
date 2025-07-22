@@ -86,6 +86,7 @@ namespace JSC {
     macro(DatePrototypeGetYearIntrinsic) \
     macro(DatePrototypeSetTimeIntrinsic) \
     macro(FromCharCodeIntrinsic) \
+    macro(GlobalIsFiniteIntrinsic) \
     macro(GlobalIsNaNIntrinsic) \
     macro(PowIntrinsic) \
     macro(FloorIntrinsic) \
@@ -100,6 +101,7 @@ namespace JSC {
     macro(RegExpExecIntrinsic) \
     macro(RegExpTestIntrinsic) \
     macro(RegExpMatchFastIntrinsic) \
+    macro(RegExpSearchIntrinsic) \
     macro(ObjectAssignIntrinsic) \
     macro(ObjectCreateIntrinsic) \
     macro(ObjectGetOwnPropertyNamesIntrinsic) \
@@ -125,7 +127,9 @@ namespace JSC {
     macro(StringPrototypeSubstringIntrinsic) \
     macro(StringPrototypeToLowerCaseIntrinsic) \
     macro(NumberPrototypeToStringIntrinsic) \
+    macro(NumberIsFiniteIntrinsic) \
     macro(NumberIsNaNIntrinsic) \
+    macro(NumberIsSafeIntegerIntrinsic) \
     macro(NumberIsIntegerIntrinsic) \
     macro(NumberConstructorIntrinsic) \
     macro(IMulIntrinsic) \
@@ -244,7 +248,7 @@ enum Intrinsic : uint8_t {
 #undef JSC_DEFINE_INTRINSIC
 };
 
-std::optional<IterationKind> interationKindForIntrinsic(Intrinsic);
+std::optional<IterationKind> iterationKindForIntrinsic(Intrinsic);
 
 ASCIILiteral intrinsicName(Intrinsic);
 

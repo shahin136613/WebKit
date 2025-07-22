@@ -43,7 +43,7 @@
 #include "EditorClient.h"
 #include "Frame.h"
 #include "HistoryItem.h"
-#include "InspectorClient.h"
+#include "InspectorBackendClient.h"
 #include "LocalFrameLoaderClient.h"
 #include "ModelPlayerProvider.h"
 #include "PerformanceLoggingClient.h"
@@ -107,7 +107,7 @@ PageConfiguration::PageConfiguration(
     UniqueRef<CryptoClient>&& cryptoClient,
     UniqueRef<ProcessSyncClient>&& processSyncClient
 #if HAVE(DIGITAL_CREDENTIALS_UI)
-    , UniqueRef<CredentialRequestCoordinatorClient>&& credentialRequestCoordinatorClient
+    , Ref<CredentialRequestCoordinatorClient>&& credentialRequestCoordinatorClient
 #endif
 )
     : identifier(identifier)

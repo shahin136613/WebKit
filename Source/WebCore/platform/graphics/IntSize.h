@@ -27,6 +27,7 @@
 
 #include "PlatformExportMacros.h"
 #include <algorithm>
+#include <cmath>
 #include <wtf/JSONValues.h>
 #include <wtf/Forward.h>
 
@@ -101,6 +102,19 @@ public:
     void scale(float scale)
     {
         this->scale(scale, scale);
+    }
+
+    constexpr IntSize scaled(float widthScale, float heightScale) const
+    {
+        return {
+            static_cast<int>(static_cast<float>(m_width) * widthScale),
+            static_cast<int>(static_cast<float>(m_height) * heightScale)
+        };
+    }
+
+    constexpr IntSize scaled(float s) const
+    {
+        return scaled(s, s);
     }
 
     constexpr IntSize expandedTo(const IntSize& other) const

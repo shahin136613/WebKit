@@ -31,6 +31,7 @@
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/modules/video_coding/codecs/vp8/libvpx_vp8_decoder.h"
 #include "webrtc/modules/video_coding/include/video_codec_interface.h"
+#include "webrtc/modules/video_coding/include/video_error_codes.h"
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/video/video.h>
@@ -38,6 +39,7 @@
 #include <wtf/Lock.h>
 #include <wtf/StdMap.h>
 #include <wtf/TZoneMallocInlines.h>
+#include <wtf/glib/GUniquePtr.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
 #include <wtf/text/MakeString.h>
 #include <wtf/text/WTFString.h>
@@ -213,7 +215,7 @@ public:
         if (inputImage._encodedWidth && inputImage._encodedHeight)
             updateCapsFromImageSize(inputImage._encodedWidth, inputImage._encodedHeight);
 
-        if (UNLIKELY(!m_caps)) {
+        if (!m_caps) [[unlikely]] {
             GST_ERROR("Encoded image caps not set");
             ASSERT_NOT_REACHED();
             return WEBRTC_VIDEO_CODEC_UNINITIALIZED;

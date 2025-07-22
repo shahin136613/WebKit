@@ -34,13 +34,14 @@
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/PlatformCAFilters.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
+#import <pal/system/ios/UserInterfaceIdiom.h>
 #import <wtf/CompletionHandler.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Seconds.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 
 static constexpr CGFloat indicatorFontSize = 16;
-static constexpr CGFloat indicatorLabelOpacity = 0.4;
 static constexpr CGFloat indicatorCornerRadius = 7;
 static constexpr CGFloat indicatorMargin = 20;
 static constexpr CGFloat indicatorVerticalPadding = 6;
@@ -71,7 +72,22 @@ static constexpr Seconds indicatorMoveDuration { 0.3_s };
     self.layer.allowsGroupOpacity = NO;
     self.layer.allowsGroupBlending = NO;
 
-    _backdropView = adoptNS([[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleLight]]);
+#if HAVE(UI_GLASS_EFFECT)
+    bool shouldUseBlurEffectForBackdrop = PAL::currentUserInterfaceIdiomIsVision();
+#else
+    bool shouldUseBlurEffectForBackdrop = true;
+#endif
+
+    RetainPtr<UIVisualEffect> visualEffect;
+    if (shouldUseBlurEffectForBackdrop)
+        visualEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
+    else {
+#if HAVE(UI_GLASS_EFFECT)
+        visualEffect = adoptNS([[UIGlassEffect alloc] init]);
+#endif
+    }
+
+    _backdropView =  adoptNS([[UIVisualEffectView alloc] initWithEffect:visualEffect.get()]);
     [_backdropView setFrame:self.bounds];
     [_backdropView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     [[_backdropView layer] setCornerRadius:indicatorCornerRadius];
@@ -83,8 +99,8 @@ static constexpr Seconds indicatorMoveDuration { 0.3_s };
     [_label setBackgroundColor:nil];
     [_label setTextAlignment:NSTextAlignmentCenter];
     [_label setFont:[UIFont boldSystemFontOfSize:indicatorFontSize]];
-    [_label setTextColor:[UIColor blackColor]];
-    [_label setAlpha:indicatorLabelOpacity];
+    if (shouldUseBlurEffectForBackdrop)
+        [_label setTextColor:[UIColor blackColor]];
     [_label setAdjustsFontSizeToFitWidth:YES];
     [_label setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     WebCore::PlatformCAFilters::setBlendingFiltersOnLayer([_label layer], WebCore::BlendMode::PlusDarker);
@@ -149,9 +165,15 @@ static constexpr Seconds indicatorMoveDuration { 0.3_s };
 
 - (void)hide:(NSTimer *)timer
 {
-    [UIView animateWithDuration:indicatorFadeOutDuration.seconds() animations:[view = retainPtr(self)] {
+    auto animations = [view = retainPtr(self)] {
         [view setAlpha:0];
-    }];
+    };
+#if HAVE(UI_VIEW_ANIMATION_OPTION_FLUSH_UPDATES)
+    static constexpr auto animationOptions = UIViewAnimationOptionFlushUpdates;
+#else
+    static constexpr auto animationOptions = 0;
+#endif
+    [UIView animateWithDuration:indicatorFadeOutDuration.seconds() delay:0 options:animationOptions animations:animations completion:nil];
 
     [std::exchange(_timer, nil) invalidate];
 }

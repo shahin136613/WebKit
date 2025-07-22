@@ -42,6 +42,7 @@
 #include "ScriptableDocumentParser.h"
 #include "Settings.h"
 #include "TrustedType.h"
+#include <JavaScriptCore/ConsoleTypes.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/MakeString.h>
 
@@ -77,9 +78,9 @@ int HTMLIFrameElement::defaultTabIndex() const
 DOMTokenList& HTMLIFrameElement::sandbox()
 {
     if (!m_sandbox) {
-        m_sandbox = makeUniqueWithoutRefCountedCheck<DOMTokenList>(*this, sandboxAttr, [](Document&, StringView token) {
+        lazyInitialize(m_sandbox, makeUniqueWithoutRefCountedCheck<DOMTokenList>(*this, sandboxAttr, [](Document&, StringView token) {
             return SecurityContext::isSupportedSandboxPolicy(token);
-        });
+        }));
     }
     return *m_sandbox;
 }
@@ -150,7 +151,7 @@ void HTMLIFrameElement::attributeChanged(const QualifiedName& name, const AtomSt
         break;
     case AttributeNames::srcdocAttr:
     case AttributeNames::srcAttr:
-        FALLTHROUGH;
+        [[fallthrough]];
     default:
         HTMLFrameElementBase::attributeChanged(name, oldValue, newValue, attributeModificationReason);
         break;
@@ -165,11 +166,6 @@ bool HTMLIFrameElement::rendererIsNeeded(const RenderStyle& style)
 RenderPtr<RenderElement> HTMLIFrameElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
     return createRenderer<RenderIFrame>(*this, WTFMove(style));
-}
-
-void HTMLIFrameElement::setReferrerPolicyForBindings(const AtomString& value)
-{
-    setAttributeWithoutSynchronization(referrerpolicyAttr, value);
 }
 
 String HTMLIFrameElement::referrerPolicyForBindings() const
@@ -189,17 +185,12 @@ const AtomString& HTMLIFrameElement::loading() const
     return equalLettersIgnoringASCIICase(attributeWithoutSynchronization(HTMLNames::loadingAttr), "lazy"_s) ? lazyAtom() : eagerAtom();
 }
 
-void HTMLIFrameElement::setLoading(const AtomString& value)
-{
-    setAttributeWithoutSynchronization(loadingAttr, value);
-}
-
 String HTMLIFrameElement::srcdoc() const
 {
     return attributeWithoutSynchronization(srcdocAttr);
 }
 
-ExceptionOr<void> HTMLIFrameElement::setSrcdoc(std::variant<RefPtr<TrustedHTML>, String>&& value, SubstituteData::SessionHistoryVisibility sessionHistoryVisibility)
+ExceptionOr<void> HTMLIFrameElement::setSrcdoc(Variant<RefPtr<TrustedHTML>, String>&& value, SubstituteData::SessionHistoryVisibility sessionHistoryVisibility)
 {
     auto stringValueHolder = trustedTypeCompliantString(*document().scriptExecutionContext(), WTFMove(value), "HTMLIFrameElement srcdoc"_s);
 

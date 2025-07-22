@@ -28,6 +28,7 @@
 #include <wtf/URL.h>
 
 #include "URLParser.h"
+#include <ranges>
 #include <stdio.h>
 #include <unicode/uidna.h>
 #include <wtf/FileSystem.h>
@@ -73,7 +74,7 @@ URL::URL(String&& absoluteURL, const URLTextEncoding* encoding)
     *this = URLParser(WTFMove(absoluteURL), URL(), encoding).result();
 }
 
-static bool shouldTrimFromURL(UChar character)
+static bool shouldTrimFromURL(char16_t character)
 {
     // Ignore leading/trailing whitespace and control characters.
     return character <= ' ';
@@ -137,6 +138,13 @@ bool URL::hasFetchScheme() const
         || protocolIsBlob()
         || protocolIsData()
         || protocolIsFile();
+}
+
+bool URL::protocolIsSecure() const
+{
+    // Note: FTPS is not considered secure for WebKit purposes.
+    return protocolIs("https"_s)
+        || protocolIs("wss"_s);
 }
 
 unsigned URL::pathStart() const
@@ -439,7 +447,7 @@ bool URL::setProtocol(StringView newProtocol)
 // Appends the punycoded hostname identified by the given string and length to
 // the output buffer. The result will not be null terminated.
 // Return value of false means error in encoding.
-static bool appendEncodedHostname(Vector<UChar, 512>& buffer, StringView string)
+static bool appendEncodedHostname(Vector<char16_t, 512>& buffer, StringView string)
 {
     // hostnameBuffer needs to be big enough to hold an IDN-encoded name.
     // For host names bigger than this, we won't do IDN encoding, which is almost certainly OK.
@@ -448,7 +456,7 @@ static bool appendEncodedHostname(Vector<UChar, 512>& buffer, StringView string)
         return true;
     }
 
-    std::array<UChar, URLParser::hostnameBufferLength> hostnameBuffer;
+    std::array<char16_t, URLParser::hostnameBufferLength> hostnameBuffer;
     UErrorCode error = U_ZERO_ERROR;
     UIDNAInfo processingDetails = UIDNA_INFO_INITIALIZER;
     int32_t numCharactersConverted = uidna_nameToASCII(&URLParser::internationalDomainNameTranscoder(),
@@ -475,14 +483,14 @@ unsigned URL::credentialsEnd() const
     return end;
 }
 
-static bool forwardSlashHashOrQuestionMark(UChar c)
+static bool forwardSlashHashOrQuestionMark(char16_t c)
 {
     return c == '/'
         || c == '#'
         || c == '?';
 }
 
-static bool slashHashOrQuestionMark(UChar c)
+static bool slashHashOrQuestionMark(char16_t c)
 {
     return forwardSlashHashOrQuestionMark(c) || c == '\\';
 }
@@ -501,7 +509,7 @@ bool URL::setHost(StringView newHost)
     if (newHost.contains(':') && !newHost.startsWith('['))
         return false;
 
-    Vector<UChar, 512> encodedHostName;
+    Vector<char16_t, 512> encodedHostName;
     if (hasSpecialScheme() && !appendEncodedHostname(encodedHostName, newHost))
         return false;
 
@@ -579,7 +587,7 @@ void URL::setHostAndPort(StringView hostAndPort)
     if (!parseInteger<uint16_t>(portString))
         portString = { };
 
-    Vector<UChar, 512> encodedHostName;
+    Vector<char16_t, 512> encodedHostName;
     if (hasSpecialScheme() && !appendEncodedHostname(encodedHostName, hostName))
         return;
 
@@ -601,7 +609,7 @@ void URL::removeHostAndPort()
 }
 
 template<typename StringType>
-static String percentEncodeCharacters(const StringType& input, bool(*shouldEncode)(UChar))
+static String percentEncodeCharacters(const StringType& input, bool(*shouldEncode)(char16_t))
 {
     auto encode = [shouldEncode] (const StringType& input) {
         auto result = input.tryGetUTF8([&](std::span<const char8_t> span) -> String {
@@ -619,7 +627,7 @@ static String percentEncodeCharacters(const StringType& input, bool(*shouldEncod
     };
 
     for (size_t i = 0; i < input.length(); ++i) {
-        if (UNLIKELY(shouldEncode(input[i])))
+        if (shouldEncode(input[i])) [[unlikely]]
             return encode(input);
     }
     if constexpr (std::is_same_v<StringType, StringView>)
@@ -744,7 +752,7 @@ void URL::setQuery(StringView newQuery)
 
 static String escapePathWithoutCopying(StringView path)
 {
-    auto questionMarkOrNumberSignOrNonASCII = [] (UChar character) {
+    auto questionMarkOrNumberSignOrNonASCII = [] (char16_t character) {
         return character == '?' || character == '#' || !isASCII(character);
     };
     return percentEncodeCharacters(path, questionMarkOrNumberSignOrNonASCII);
@@ -1282,7 +1290,7 @@ Vector<KeyValuePair<String, String>> differingQueryParameters(const URL& firstUR
         return firstQueryParameters;
     
     auto compare = [] (const KeyValuePair<String, String>& a, const KeyValuePair<String, String>& b) {
-        if (int result = codePointCompare(a.key, b.key))
+        if (auto result = codePointCompare(a.key, b.key); is_neq(result))
             return result;
         return codePointCompare(a.value, b.value);
         
@@ -1291,19 +1299,19 @@ Vector<KeyValuePair<String, String>> differingQueryParameters(const URL& firstUR
         return compare(a, b) < 0;
     };
     
-    std::sort(firstQueryParameters.begin(), firstQueryParameters.end(), comparesLessThan);
-    std::sort(secondQueryParameters.begin(), secondQueryParameters.end(), comparesLessThan);
+    std::ranges::sort(firstQueryParameters, comparesLessThan);
+    std::ranges::sort(secondQueryParameters, comparesLessThan);
     size_t totalFirstQueryParameters = firstQueryParameters.size();
     size_t totalSecondQueryParameters = secondQueryParameters.size();
     size_t indexInFirstQueryParameters = 0;
     size_t indexInSecondQueryParameters = 0;
     Vector<KeyValuePair<String, String>> differingQueryParameters;
     while (indexInFirstQueryParameters < totalFirstQueryParameters && indexInSecondQueryParameters < totalSecondQueryParameters) {
-        int comparison = compare(firstQueryParameters[indexInFirstQueryParameters], secondQueryParameters[indexInSecondQueryParameters]);
-        if (comparison < 0) {
+        auto comparison = compare(firstQueryParameters[indexInFirstQueryParameters], secondQueryParameters[indexInSecondQueryParameters]);
+        if (is_lt(comparison)) {
             differingQueryParameters.append(firstQueryParameters[indexInFirstQueryParameters]);
             indexInFirstQueryParameters++;
-        } else if (comparison > 0) {
+        } else if (is_gt(comparison)) {
             differingQueryParameters.append(secondQueryParameters[indexInSecondQueryParameters]);
             indexInSecondQueryParameters++;
         } else {
@@ -1338,17 +1346,17 @@ bool isEqualIgnoringQueryAndFragments(const URL& a, const URL& b)
     return substringIgnoringQueryAndFragments(a) == substringIgnoringQueryAndFragments(b);
 }
 
-Vector<String> removeQueryParameters(URL& url, const UncheckedKeyHashSet<String>& keysToRemove)
+Vector<String> removeQueryParameters(URL& url, const HashSet<String>& keysToRemove)
 {
     if (keysToRemove.isEmpty())
         return { };
 
-    return removeQueryParameters(url, [&](auto& parameter) {
-        return keysToRemove.contains(parameter);
+    return removeQueryParameters(url, [&](auto& key, auto&) {
+        return keysToRemove.contains(key);
     });
 }
 
-Vector<String> removeQueryParameters(URL& url, NOESCAPE const Function<bool(const String&)>& shouldRemove)
+Vector<String> removeQueryParameters(URL& url, NOESCAPE const Function<bool(const String&, const String&)>& shouldRemove)
 {
     if (!url.hasQuery())
         return { };
@@ -1364,7 +1372,7 @@ Vector<String> removeQueryParameters(URL& url, NOESCAPE const Function<bool(cons
         if (key.isEmpty())
             continue;
 
-        if (shouldRemove(key)) {
+        if (shouldRemove(key, nameAndValue->value)) {
             removedParameters.append(key);
             continue;
         }

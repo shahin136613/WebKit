@@ -37,6 +37,7 @@
 #include <wtf/FileHandle.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/ProcessID.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/MakeString.h>
@@ -120,7 +121,7 @@ String animatedPropertyIDAsString(AnimatedProperty property)
     return ""_s;
 }
 
-typedef UncheckedKeyHashMap<const GraphicsLayer*, Vector<FloatRect>> RepaintMap;
+using RepaintMap = HashMap<const GraphicsLayer*, Vector<FloatRect>>;
 static RepaintMap& repaintRectMap()
 {
     static NeverDestroyed<RepaintMap> map;
@@ -207,6 +208,7 @@ GraphicsLayer::GraphicsLayer(Type type, GraphicsLayerClient& layerClient)
     , m_appliesDeviceScale(true)
     , m_showDebugBorder(false)
     , m_showRepaintCounter(false)
+    , m_showFrameProcessBorders(false)
     , m_isMaskLayer(false)
     , m_isBackdropRoot(false)
     , m_isTrackingDisplayListReplay(false)
@@ -450,6 +452,16 @@ void GraphicsLayer::setDrawsHDRContent(bool b)
 {
     ASSERT(m_type != Type::Structural);
     m_drawsHDRContent = b;
+}
+
+void GraphicsLayer::setTonemappingEnabled(bool b)
+{
+    ASSERT(m_type != Type::Structural);
+    m_tonemappingEnabled = b;
+}
+
+void GraphicsLayer::setNeedsDisplayIfEDRHeadroomExceeds(float)
+{
 }
 #endif
 
@@ -788,12 +800,20 @@ void GraphicsLayer::getDebugBorderInfo(Color& color, float& width) const
         return;
     }
 
+    if (isShowingFrameProcessBorders()) {
+        auto hash = intHash(static_cast<uint32_t>(getCurrentProcessID()));
+        uint8_t r = (hash >>  0) & 0xFF, g = (hash >>  8) & 0xFF, b = (hash >> 16) & 0xFF;
+        color = SRGBA<uint8_t> { r, g, b }.colorWithAlphaByte(192);
+        width = 4;
+        return;
+    }
+
     color = Color::yellow.colorWithAlphaByte(192); // container: yellow
 }
 
 void GraphicsLayer::updateDebugIndicators()
 {
-    if (!isShowingDebugBorder())
+    if (!isShowingDebugBorder() && !isShowingFrameProcessBorders())
         return;
 
     Color borderColor;

@@ -27,7 +27,6 @@
 #include "config.h"
 #include "BorderData.h"
 
-#include "OutlineValue.h"
 #include "RenderStyle.h"
 #include "StylePrimitiveNumericTypes+Logging.h"
 #include <wtf/PointerComparison.h>
@@ -35,32 +34,27 @@
 
 namespace WebCore {
 
+bool BorderData::containsCurrentColor() const
+{
+    return m_edges.anyOf([](const auto& edge) {
+        return edge.isVisible() && edge.color().containsCurrentColor();
+    });
+}
+
 bool BorderData::isEquivalentForPainting(const BorderData& other, bool currentColorDiffers) const
 {
-    if (!arePointingToEqualData(this, &other))
+    if (this == &other) {
+        ASSERT(currentColorDiffers);
+        return !containsCurrentColor();
+    }
+
+    if (*this != other)
         return false;
 
     if (!currentColorDiffers)
         return true;
 
-    auto visibleBorderHasCurrentColor = m_edges.anyOf([](const auto& edge) {
-        return edge.isVisible() && edge.color().containsCurrentColor();
-    });
-
-    return !visibleBorderHasCurrentColor;
-}
-
-TextStream& operator<<(TextStream& ts, const BorderValue& borderValue)
-{
-    ts << borderValue.width() << ' ' << borderValue.style() << ' ' << borderValue.color();
-    return ts;
-}
-
-TextStream& operator<<(TextStream& ts, const OutlineValue& outlineValue)
-{
-    ts << static_cast<const BorderValue&>(outlineValue);
-    ts.dumpProperty("outline-offset"_s, outlineValue.offset());
-    return ts;
+    return !containsCurrentColor();
 }
 
 void BorderData::dump(TextStream& ts, DumpStyleValues behavior) const
@@ -85,13 +79,13 @@ void BorderData::dump(TextStream& ts, DumpStyleValues behavior) const
 
     ts.dumpProperty("image"_s, image());
 
-    if (behavior == DumpStyleValues::All || !topLeftRadius().isZero())
+    if (behavior == DumpStyleValues::All || !Style::isZero(topLeftRadius()))
         ts.dumpProperty("top-left"_s, topLeftRadius());
-    if (behavior == DumpStyleValues::All || !topRightRadius().isZero())
+    if (behavior == DumpStyleValues::All || !Style::isZero(topRightRadius()))
         ts.dumpProperty("top-right"_s, topRightRadius());
-    if (behavior == DumpStyleValues::All || !bottomLeftRadius().isZero())
+    if (behavior == DumpStyleValues::All || !Style::isZero(bottomLeftRadius()))
         ts.dumpProperty("bottom-left"_s, bottomLeftRadius());
-    if (behavior == DumpStyleValues::All || !bottomRightRadius().isZero())
+    if (behavior == DumpStyleValues::All || !Style::isZero(bottomRightRadius()))
         ts.dumpProperty("bottom-right"_s, bottomRightRadius());
 }
 

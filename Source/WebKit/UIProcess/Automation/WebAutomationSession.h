@@ -35,6 +35,7 @@
 #include "WebEvent.h"
 #include "WebPageProxyIdentifier.h"
 #include <JavaScriptCore/ConsoleTypes.h>
+#include <JavaScriptCore/InspectorFrontendChannel.h>
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/ShareableBitmap.h>
 #include <wtf/CheckedPtr.h>
@@ -80,7 +81,6 @@ class OpenPanelParameters;
 namespace WebKit {
 
 class ViewSnapshot;
-class WebAutomationSessionClient;
 class WebFrameProxy;
 class WebOpenPanelResultListenerProxy;
 class WebPageProxy;
@@ -116,6 +116,11 @@ class WebAutomationSession final : public API::ObjectImpl<API::Object::Type::Aut
     , public SimulatedInputDispatcher::Client
 #endif
 {
+
+#if ENABLE(WEBDRIVER_BIDI)
+friend class WebDriverBidiProcessor;
+#endif
+
 public:
     WebAutomationSession();
     ~WebAutomationSession() override;
@@ -158,9 +163,12 @@ public:
     void keyboardEventsFlushedForPage(const WebPageProxy&);
     void mouseEventsFlushedForPage(const WebPageProxy&);
     void wheelEventsFlushedForPage(const WebPageProxy&);
+#if ENABLE(WEBDRIVER_BIDI)
+    void didCreatePage(WebPageProxy&);
+#endif
     void willClosePage(const WebPageProxy&);
     void handleRunOpenPanel(const WebPageProxy&, const WebFrameProxy&, const API::OpenPanelParameters&, WebOpenPanelResultListenerProxy&);
-    void willShowJavaScriptDialog(WebPageProxy&);
+    void willShowJavaScriptDialog(WebPageProxy&, const String& message, std::optional<String>&& defaultValue);
     void didEnterFullScreenForPage(const WebPageProxy&);
     void didExitFullScreenForPage(const WebPageProxy&);
 
@@ -189,7 +197,7 @@ public:
     void simulateTouchInteraction(WebPageProxy&, TouchInteraction, const WebCore::IntPoint& locationInView, std::optional<Seconds> duration, AutomationCompletionHandler&&) override;
 #endif
 #if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
-    void simulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, std::variant<VirtualKey, CharKey>&&, AutomationCompletionHandler&&) override;
+    void simulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, Variant<VirtualKey, CharKey>&&, AutomationCompletionHandler&&) override;
 #endif
 #if ENABLE(WEBDRIVER_WHEEL_INTERACTIONS)
     void simulateWheelInteraction(WebPageProxy&, const WebCore::IntPoint& locationInView, const WebCore::IntSize& delta, AutomationCompletionHandler&&) override;
@@ -206,7 +214,7 @@ public:
     void getBrowsingContexts(Inspector::CommandCallback<Ref<JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>>>&&) override;
     void getBrowsingContext(const Inspector::Protocol::Automation::BrowsingContextHandle&, Inspector::CommandCallback<Ref<Inspector::Protocol::Automation::BrowsingContext>>&&) override;
     void createBrowsingContext(std::optional<Inspector::Protocol::Automation::BrowsingContextPresentation>&&, Inspector::CommandCallbackOf<String, Inspector::Protocol::Automation::BrowsingContextPresentation>&&) override;
-    Inspector::CommandResult<void> closeBrowsingContext(const Inspector::Protocol::Automation::BrowsingContextHandle&) override;
+    void closeBrowsingContext(const Inspector::Protocol::Automation::BrowsingContextHandle&, Inspector::CommandCallback<void>&&) override;
     Inspector::CommandResult<void> deleteSession() override;
     void switchToBrowsingContext(const Inspector::Protocol::Automation::BrowsingContextHandle&, const Inspector::Protocol::Automation::FrameHandle&, Inspector::CommandCallback<void>&&) override;
     void setWindowFrameOfBrowsingContext(const Inspector::Protocol::Automation::BrowsingContextHandle&, RefPtr<JSON::Object>&& origin, RefPtr<JSON::Object>&& size, Inspector::CommandCallback<void>&&) override;
@@ -279,14 +287,15 @@ public:
 
     void didDestroyFrame(WebCore::FrameIdentifier);
 
-private:
     RefPtr<WebPageProxy> webPageProxyForHandle(const String&);
+    String handleForWebFrameID(std::optional<WebCore::FrameIdentifier>);
     String handleForWebPageProxy(const WebPageProxy&);
+
+private:
     Ref<Inspector::Protocol::Automation::BrowsingContext> buildBrowsingContextForPage(WebPageProxy&, WebCore::FloatRect windowFrame);
     void getNextContext(Vector<Ref<WebPageProxy>>&&, Ref<JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>>, Inspector::CommandCallback<Ref<JSON::ArrayOf<Inspector::Protocol::Automation::BrowsingContext>>>&&);
 
     std::optional<WebCore::FrameIdentifier> webFrameIDForHandle(const String&, bool& frameNotFound);
-    String handleForWebFrameID(std::optional<WebCore::FrameIdentifier>);
     String handleForWebFrameProxy(const WebFrameProxy&);
 
     void waitForNavigationToCompleteOnPage(WebPageProxy&, Inspector::Protocol::Automation::PageLoadStrategy, Seconds, Inspector::CommandCallback<void>&&);
@@ -319,7 +328,7 @@ private:
 #endif
 #if ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
     // Simulates a single virtual or char key being pressed/released, such as 'a', Control, F-keys, Numpad keys, etc. as allowed by the protocol.
-    void platformSimulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, std::variant<VirtualKey, CharKey>&&);
+    void platformSimulateKeyboardInteraction(WebPageProxy&, KeyboardInteraction, Variant<VirtualKey, CharKey>&&);
     // Simulates key presses to produce the codepoints in a string. One or more code points are delivered atomically at grapheme cluster boundaries.
     void platformSimulateKeySequence(WebPageProxy&, const String&);
 #endif // ENABLE(WEBDRIVER_KEYBOARD_INTERACTIONS)
@@ -343,23 +352,17 @@ private:
     std::optional<unichar> charCodeIgnoringModifiersForVirtualKey(Inspector::Protocol::Automation::VirtualKey) const;
 #endif
 
-    Ref<Inspector::FrontendRouter> protectedFrontendRouter() const;
-    Ref<Inspector::BackendDispatcher> protectedBackendDispatcher() const;
-#if ENABLE(REMOTE_INSPECTOR)
-    Ref<Debuggable> protectedDebuggable() const;
-#endif
-
     WeakPtr<WebProcessPool> m_processPool;
 
     std::unique_ptr<API::AutomationSessionClient> m_client;
     String m_sessionIdentifier { "Untitled Session"_s };
-    Ref<Inspector::FrontendRouter> m_frontendRouter;
-    Ref<Inspector::BackendDispatcher> m_backendDispatcher;
-    Ref<Inspector::AutomationBackendDispatcher> m_domainDispatcher;
-    std::unique_ptr<Inspector::AutomationFrontendDispatcher> m_domainNotifier;
+    const Ref<Inspector::FrontendRouter> m_frontendRouter;
+    const Ref<Inspector::BackendDispatcher> m_backendDispatcher;
+    const Ref<Inspector::AutomationBackendDispatcher> m_domainDispatcher;
+    const UniqueRef<Inspector::AutomationFrontendDispatcher> m_domainNotifier;
 
 #if ENABLE(WEBDRIVER_BIDI)
-    std::unique_ptr<WebDriverBidiProcessor> m_bidiProcessor;
+    const UniqueRef<WebDriverBidiProcessor> m_bidiProcessor;
 #endif
 
     HashMap<WebPageProxyIdentifier, String> m_webPageHandleMap;
@@ -421,7 +424,7 @@ private:
 
 #if ENABLE(REMOTE_INSPECTOR)
     Inspector::FrontendChannel* m_remoteChannel { nullptr };
-    Ref<Debuggable> m_debuggable;
+    const Ref<Debuggable> m_debuggable;
 #endif
 
 };

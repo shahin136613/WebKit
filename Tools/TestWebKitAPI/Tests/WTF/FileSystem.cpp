@@ -28,6 +28,7 @@
 
 #include "Test.h"
 #include "Utilities.h"
+#include <ranges>
 #include <wtf/FileHandle.h>
 #include <wtf/FileSystem.h>
 #include <wtf/MainThread.h>
@@ -350,11 +351,11 @@ TEST_F(FileSystemTest, deleteNonEmptyDirectory)
     auto temporaryTestFolder = FileSystem::createTemporaryFile("deleteNonEmptyDirectoryTest"_s);
 
     EXPECT_TRUE(FileSystem::deleteFile(temporaryTestFolder));
-    EXPECT_TRUE(FileSystem::makeAllDirectories(FileSystem::pathByAppendingComponents(temporaryTestFolder, { "subfolder"_s })));
+    EXPECT_TRUE(FileSystem::makeAllDirectories(FileSystem::pathByAppendingComponents(temporaryTestFolder, std::initializer_list<StringView>({ "subfolder"_s }))));
     createTestFile(FileSystem::pathByAppendingComponent(temporaryTestFolder, "file1.txt"_s));
     createTestFile(FileSystem::pathByAppendingComponent(temporaryTestFolder, "file2.txt"_s));
-    createTestFile(FileSystem::pathByAppendingComponents(temporaryTestFolder, { "subfolder"_s, "file3.txt"_s }));
-    createTestFile(FileSystem::pathByAppendingComponents(temporaryTestFolder, { "subfolder"_s, "file4.txt"_s }));
+    createTestFile(FileSystem::pathByAppendingComponents(temporaryTestFolder, std::initializer_list<StringView>({ "subfolder"_s, "file3.txt"_s })));
+    createTestFile(FileSystem::pathByAppendingComponents(temporaryTestFolder, std::initializer_list<StringView>({ "subfolder"_s, "file4.txt"_s })));
     EXPECT_FALSE(FileSystem::deleteEmptyDirectory(temporaryTestFolder));
     EXPECT_TRUE(FileSystem::fileExists(temporaryTestFolder));
     EXPECT_TRUE(FileSystem::deleteNonEmptyDirectory(temporaryTestFolder));
@@ -579,7 +580,7 @@ TEST_F(FileSystemTest, makeAllDirectories)
     EXPECT_TRUE(FileSystem::fileExists(tempEmptyFolderPath()));
     EXPECT_EQ(FileSystem::fileType(tempEmptyFolderPath()), FileSystem::FileType::Directory);
     EXPECT_TRUE(FileSystem::makeAllDirectories(tempEmptyFolderPath()));
-    String subFolderPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "subFolder1"_s, "subFolder2"_s, "subFolder3"_s });
+    String subFolderPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "subFolder1"_s, "subFolder2"_s, "subFolder3"_s }));
     EXPECT_FALSE(FileSystem::fileExists(subFolderPath));
     EXPECT_TRUE(FileSystem::makeAllDirectories(subFolderPath));
     EXPECT_TRUE(FileSystem::fileExists(subFolderPath));
@@ -794,7 +795,7 @@ TEST_F(FileSystemTest, updateFileModificationTime)
 
 TEST_F(FileSystemTest, pathFileName)
 {
-    auto testPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "subfolder"_s, "filename.txt"_s });
+    auto testPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "subfolder"_s, "filename.txt"_s }));
     EXPECT_STREQ("filename.txt", FileSystem::pathFileName(testPath).utf8().data());
 
 #if OS(UNIX)
@@ -816,7 +817,7 @@ TEST_F(FileSystemTest, pathFileName)
 
 TEST_F(FileSystemTest, parentPath)
 {
-    auto testPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "subfolder"_s, "filename.txt"_s });
+    auto testPath = FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "subfolder"_s, "filename.txt"_s }));
     EXPECT_STREQ(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "subfolder"_s).utf8().data(), FileSystem::parentPath(testPath).utf8().data());
 #if OS(UNIX)
     EXPECT_STREQ("/var/tmp", FileSystem::parentPath("/var/tmp/example.txt"_s).utf8().data());
@@ -850,19 +851,19 @@ TEST_F(FileSystemTest, pathByAppendingComponent)
 TEST_F(FileSystemTest, pathByAppendingComponents)
 {
     EXPECT_STREQ(tempEmptyFolderPath().utf8().data(), FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { }).utf8().data());
-    EXPECT_STREQ(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "file.txt"_s).utf8().data(), FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "file.txt"_s }).utf8().data());
+    EXPECT_STREQ(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "file.txt"_s).utf8().data(), FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "file.txt"_s })).utf8().data());
 #if OS(UNIX)
-    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/"_s, { "var"_s, "tmp"_s, "file.txt"_s }).utf8().data());
-    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var"_s, { "tmp"_s, "file.txt"_s }).utf8().data());
-    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var/"_s, { "tmp"_s, "file.txt"_s }).utf8().data());
-    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var/tmp"_s, { "file.txt"_s }).utf8().data());
+    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/"_s, std::initializer_list<StringView>({ "var"_s, "tmp"_s, "file.txt"_s })).utf8().data());
+    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var"_s, std::initializer_list<StringView>({ "tmp"_s, "file.txt"_s })).utf8().data());
+    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var/"_s, std::initializer_list<StringView>({ "tmp"_s, "file.txt"_s })).utf8().data());
+    EXPECT_STREQ("/var/tmp/file.txt", FileSystem::pathByAppendingComponents("/var/tmp"_s, std::initializer_list<StringView>({ "file.txt"_s })).utf8().data());
 #endif
 #if OS(WINDOWS)
-    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\"_s, { "Foo"_s, "Bar"_s, "File.txt"_s }).utf8().data());
-    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo"_s, { "Bar"_s, "File.txt"_s }).utf8().data());
-    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\"_s, { "Bar"_s, "File.txt"_s }).utf8().data());
-    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\Bar"_s, { "File.txt"_s }).utf8().data());
-    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\Bar\\"_s, { "File.txt"_s }).utf8().data());
+    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\"_s, std::initializer_list<StringView>({ "Foo"_s, "Bar"_s, "File.txt"_s })).utf8().data());
+    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo"_s, std::initializer_list<StringView>({ "Bar"_s, "File.txt"_s })).utf8().data());
+    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\"_s, std::initializer_list<StringView>({ "Bar"_s, "File.txt"_s })).utf8().data());
+    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\Bar"_s, std::initializer_list<StringView>({ "File.txt"_s })).utf8().data());
+    EXPECT_STREQ("C:\\Foo\\Bar\\File.txt", FileSystem::pathByAppendingComponents("C:\\Foo\\Bar\\"_s, std::initializer_list<StringView>({ "File.txt"_s })).utf8().data());
 #endif
 }
 
@@ -873,12 +874,12 @@ TEST_F(FileSystemTest, listDirectory)
     createTestFile(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "bar.png"_s));
     createTestFile(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "foo.png"_s));
     FileSystem::makeAllDirectories(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "subfolder"_s));
-    createTestFile(FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "subfolder"_s, "c.txt"_s }));
-    createTestFile(FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), { "subfolder"_s, "d.txt"_s }));
+    createTestFile(FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "subfolder"_s, "c.txt"_s })));
+    createTestFile(FileSystem::pathByAppendingComponents(tempEmptyFolderPath(), std::initializer_list<StringView>({ "subfolder"_s, "d.txt"_s })));
 
     auto matches = FileSystem::listDirectory(tempEmptyFolderPath());
     ASSERT_EQ(matches.size(), 5U);
-    std::sort(matches.begin(), matches.end(), WTF::codePointCompareLessThan);
+    std::ranges::sort(matches, WTF::codePointCompareLessThan);
     EXPECT_STREQ(matches[0].utf8().data(), "a.txt");
     EXPECT_STREQ(matches[1].utf8().data(), "b.txt");
     EXPECT_STREQ(matches[2].utf8().data(), "bar.png");
@@ -887,7 +888,7 @@ TEST_F(FileSystemTest, listDirectory)
 
     matches = FileSystem::listDirectory(FileSystem::pathByAppendingComponent(tempEmptyFolderPath(), "subfolder"_s));
     ASSERT_EQ(matches.size(), 2U);
-    std::sort(matches.begin(), matches.end(), WTF::codePointCompareLessThan);
+    std::ranges::sort(matches, WTF::codePointCompareLessThan);
     EXPECT_STREQ(matches[0].utf8().data(), "c.txt");
     EXPECT_STREQ(matches[1].utf8().data(), "d.txt");
 
@@ -924,8 +925,8 @@ TEST_F(FileSystemTest, realPath)
     FileSystem::makeAllDirectories(subFolderPath);
     auto resolvedSubFolderPath = FileSystem::realPath(subFolderPath);
     EXPECT_STREQ(FileSystem::realPath(FileSystem::pathByAppendingComponent(subFolderPath, ".."_s)).utf8().data(), resolvedTempEmptyFolderPath.utf8().data()); // Should resolve "..".
-    EXPECT_STREQ(FileSystem::realPath(FileSystem::pathByAppendingComponents(subFolderPath, { ".."_s, "subfolder"_s })).utf8().data(), resolvedSubFolderPath.utf8().data()); // Should resolve "..".
-    EXPECT_STREQ(FileSystem::realPath(FileSystem::pathByAppendingComponents(subFolderPath, { ".."_s, "."_s, "."_s, "subfolder"_s })).utf8().data(), resolvedSubFolderPath.utf8().data()); // Should resolve ".." and "."
+    EXPECT_STREQ(FileSystem::realPath(FileSystem::pathByAppendingComponents(subFolderPath, std::initializer_list<StringView>({ ".."_s, "subfolder"_s }))).utf8().data(), resolvedSubFolderPath.utf8().data()); // Should resolve "..".
+    EXPECT_STREQ(FileSystem::realPath(FileSystem::pathByAppendingComponents(subFolderPath, std::initializer_list<StringView>({ ".."_s, "."_s, "."_s, "subfolder"_s }))).utf8().data(), resolvedSubFolderPath.utf8().data()); // Should resolve ".." and "."
 }
 #endif
 
@@ -970,7 +971,7 @@ TEST_F(FileSystemTest, isAncestor)
         { { "a/b/c", "a/b/c/" }, false },
         { { "/a/b/c", "a/b/c/" }, false }
     };
-    std::for_each(narrowString.begin(), narrowString.end(), [](auto input) {
+    std::ranges::for_each(narrowString, [](auto input) {
         EXPECT_EQ(
             input.second,
                 FileSystem::isAncestor(
@@ -994,12 +995,12 @@ TEST_F(FileSystemTest, isAncestor)
         { { u"a/b/c", u"a/b/c/" }, false },
         { { u"/a/b/c", u"a/b/c/" }, false }
     };
-    std::for_each(wideString.begin(), wideString.end(), [](auto input) {
+    std::ranges::for_each(wideString, [](auto input) {
         EXPECT_EQ(
             input.second,
                 FileSystem::isAncestor(
-                    std::span<const UChar> { static_cast<const UChar *>(input.first.first), std::char_traits<char16_t>::length(input.first.first) },
-                    std::span<const UChar> { static_cast<const UChar*>(input.first.second), std::char_traits<char16_t>::length(input.first.second) }
+                    std::span<const char16_t> { static_cast<const char16_t *>(input.first.first), std::char_traits<char16_t>::length(input.first.first) },
+                    std::span<const char16_t> { static_cast<const char16_t*>(input.first.second), std::char_traits<char16_t>::length(input.first.second) }
                 )
             );
         }

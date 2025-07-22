@@ -26,15 +26,17 @@
 #include "GenericMediaQueryParser.h"
 
 #include "CSSCustomPropertyValue.h"
-#include "CSSParserImpl.h"
+#include "CSSParser.h"
 #include "CSSPropertyParser.h"
+#include "CSSPropertyParserConsumer+CSSPrimitiveValueResolver.h"
 #include "CSSPropertyParserConsumer+Ident.h"
-#include "CSSPropertyParserConsumer+Integer.h"
-#include "CSSPropertyParserConsumer+Length.h"
-#include "CSSPropertyParserConsumer+Number.h"
+#include "CSSPropertyParserConsumer+IntegerDefinitions.h"
+#include "CSSPropertyParserConsumer+LengthDefinitions.h"
+#include "CSSPropertyParserConsumer+NumberDefinitions.h"
 #include "CSSPropertyParserConsumer+Primitives.h"
 #include "CSSPropertyParserConsumer+Ratio.h"
-#include "CSSPropertyParserConsumer+Resolution.h"
+#include "CSSPropertyParserConsumer+ResolutionDefinitions.h"
+#include "CSSPropertyParserState.h"
 #include "CSSRatioValue.h"
 #include "CSSValue.h"
 #include "CSSVariableParser.h"
@@ -70,7 +72,7 @@ static RefPtr<CSSValue> consumeCustomPropertyValue(AtomString propertyName, CSSP
     range.consumeAll();
 
     // Syntax is that of a valid declaration so !important is allowed. It just gets ignored.
-    CSSParserImpl::consumeTrailingImportantAndWhitespace(valueRange);
+    CSSParser::consumeTrailingImportantAndWhitespace(valueRange);
 
     if (valueRange.atEnd())
         return CSSCustomPropertyValue::createEmpty(propertyName);
@@ -221,20 +223,28 @@ std::optional<Feature> FeatureParser::consumeRangeFeature(CSSParserTokenRange& r
 
 RefPtr<CSSValue> FeatureParser::consumeValue(CSSParserTokenRange& range, const MediaQueryParserContext& context)
 {
+    using namespace CSSPropertyParserHelpers;
+
     if (range.atEnd())
         return nullptr;
 
-    if (RefPtr value = CSSPropertyParserHelpers::consumeIdent(range))
+    if (RefPtr value = consumeIdent(range))
         return value;
-    if (RefPtr value = CSSPropertyParserHelpers::consumeRatioWithBothNumeratorAndDenominator(range, context.context))
+
+    auto parserState = CSS::PropertyParserState {
+        .context = context.context,
+    };
+
+    if (RefPtr value = consumeRatioWithBothNumeratorAndDenominator(range, parserState))
         return value;
-    if (RefPtr value = CSSPropertyParserHelpers::consumeInteger(range, context.context))
+    if (RefPtr value = CSSPrimitiveValueResolver<CSS::Integer<>>::consumeAndResolve(range, parserState))
         return value;
-    if (RefPtr value = CSSPropertyParserHelpers::consumeNumber(range, context.context))
+    if (RefPtr value = CSSPrimitiveValueResolver<CSS::Number<>>::consumeAndResolve(range, parserState))
         return value;
-    if (RefPtr value = CSSPropertyParserHelpers::consumeLength(range, context.context, HTMLStandardMode))
+    // FIXME: Figure out and document why overrideParserMode is explicitly set to HTMLStandardMode here.
+    if (RefPtr value = CSSPrimitiveValueResolver<CSS::Length<>>::consumeAndResolve(range, parserState, { .overrideParserMode = HTMLStandardMode }))
         return value;
-    if (RefPtr value = CSSPropertyParserHelpers::consumeResolution(range, context.context))
+    if (RefPtr value = CSSPrimitiveValueResolver<CSS::Resolution<>>::consumeAndResolve(range, parserState))
         return value;
 
     return nullptr;

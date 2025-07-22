@@ -99,9 +99,9 @@ public:
     void setCameraPermission(bool);
     void setMicrophonePermission(bool);
     void resetUserMediaPermission();
-    void setUserMediaPersistentPermissionForOrigin(bool permission, WKStringRef origin, WKStringRef parentOrigin);
-    unsigned userMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin) const;
-    void resetUserMediaPermissionRequestCountForOrigin(WKStringRef origin, WKStringRef parentOrigin);
+    void delayUserMediaRequestDecision();
+    unsigned userMediaPermissionRequestCount() const;
+    void resetUserMediaPermissionRequestCount();
 
     // Policy delegate.
     void setCustomPolicyDelegate(bool enabled, bool permissive);
@@ -185,7 +185,6 @@ private:
     WKBundleFrameRef m_topLoadingFrame { nullptr };
 
     bool m_dumpPixels { false };
-    bool m_useWorkQueue { false };
     bool m_pixelResultIsPending { false };
     bool m_accessibilityIsolatedTreeMode { false };
 
@@ -222,6 +221,7 @@ void postSynchronousMessage(const char* name, const void* value) = delete;
 
 void postPageMessage(const char* name);
 void postPageMessage(const char* name, bool value);
+void postPageMessage(const char* name, unsigned value);
 void postPageMessage(const char* name, const char* value);
 void postPageMessage(const char* name, WKStringRef value);
 void postPageMessage(const char* name, WKDataRef value);

@@ -2334,6 +2334,18 @@ public:
             m_assembler.cvtsi2ss_mr(src.offset, src.base, dest);
     }
 
+    void convertUInt32ToDouble(RegisterID src, FPRegisterID dest)
+    {
+        zeroExtend32ToWord(src, scratchRegister());
+        convertInt64ToDouble(scratchRegister(), dest);
+    }
+
+    void convertUInt32ToFloat(RegisterID src, FPRegisterID dest)
+    {
+        zeroExtend32ToWord(src, scratchRegister());
+        convertInt64ToFloat(scratchRegister(), dest);
+    }
+
     Jump branchDouble(DoubleCondition cond, FPRegisterID left, FPRegisterID right)
     {
         if (cond & DoubleConditionBitInvert) {
@@ -5223,7 +5235,7 @@ public:
 
     void lshift64(TrustedImm32 imm, RegisterID dest)
     {
-        if (UNLIKELY(!imm.m_value))
+        if (!imm.m_value) [[unlikely]]
             return;
         m_assembler.shlq_i8r(imm.m_value, dest);
     }
@@ -5290,7 +5302,7 @@ public:
 
     void rshift64(TrustedImm32 imm, RegisterID dest)
     {
-        if (UNLIKELY(!imm.m_value))
+        if (!imm.m_value) [[unlikely]]
             return;
         m_assembler.sarq_i8r(imm.m_value, dest);
     }
@@ -5329,7 +5341,7 @@ public:
 
     void urshift64(TrustedImm32 imm, RegisterID dest)
     {
-        if (UNLIKELY(!imm.m_value))
+        if (!imm.m_value) [[unlikely]]
             return;
         m_assembler.shrq_i8r(imm.m_value, dest);
     }
@@ -5368,7 +5380,7 @@ public:
 
     void rotateRight64(TrustedImm32 imm, RegisterID dest)
     {
-        if (UNLIKELY(!imm.m_value))
+        if (!imm.m_value) [[unlikely]]
             return;
         m_assembler.rorq_i8r(imm.m_value, dest);
     }
@@ -5407,7 +5419,7 @@ public:
 
     void rotateLeft64(TrustedImm32 imm, RegisterID dest)
     {
-        if (UNLIKELY(!imm.m_value))
+        if (!imm.m_value) [[unlikely]]
             return;
         m_assembler.rolq_i8r(imm.m_value, dest);
     }
@@ -5625,7 +5637,7 @@ public:
             return;
         }
 
-        if (UNLIKELY(imm.m_value == INT32_MIN)) {
+        if (imm.m_value == INT32_MIN) [[unlikely]] {
             move(a, dest);
             sub64(imm, dest);
         } else
@@ -5649,12 +5661,14 @@ public:
             return;
         }
 
-        if (isRepresentableAs<int32_t>(imm.m_value) && LIKELY(imm.m_value != INT32_MIN))
-            m_assembler.leaq_mr(-imm.m_value, src, dest);
-        else {
-            move(src, dest);
-            sub64(imm, dest);
+        if (isRepresentableAs<int32_t>(imm.m_value)) {
+            if (imm.m_value != INT32_MIN) [[likely]] {
+                m_assembler.leaq_mr(-imm.m_value, src, dest);
+                return;
+            }
         }
+        move(src, dest);
+        sub64(imm, dest);
     }
 
     void sub64(TrustedImm32 imm, Address address)
@@ -5935,82 +5949,69 @@ public:
         storePair64(src1, src2, dest.base, TrustedImm32(dest.offset));
     }
 
-    void transfer32(Address src, Address dest)
+    // FIXME: This could be a shared implementation with a size template but there's no equivalently templated load/store functions to use.
+    template<typename SrcType, typename DestType>
+    void transfer8(SrcType src, DestType dest)
     {
-        if (src == dest)
-            return;
+        if constexpr (std::equality_comparable_with<SrcType, DestType>) {
+            if (src == dest)
+                return;
+        }
+
+        load8(src, scratchRegister());
+        store8(scratchRegister(), dest);
+    }
+
+    template<typename SrcType, typename DestType>
+    void transfer16(SrcType src, DestType dest)
+    {
+        if constexpr (std::equality_comparable_with<SrcType, DestType>) {
+            if (src == dest)
+                return;
+        }
+
+        load16(src, scratchRegister());
+        store16(scratchRegister(), dest);
+    }
+
+    template<typename SrcType, typename DestType>
+    void transfer32(SrcType src, DestType dest)
+    {
+        if constexpr (std::equality_comparable_with<SrcType, DestType>) {
+            if (src == dest)
+                return;
+        }
+
         load32(src, scratchRegister());
         store32(scratchRegister(), dest);
     }
 
-    void transfer64(Address src, Address dest)
+    template<typename SrcType, typename DestType>
+    void transfer64(SrcType src, DestType dest)
     {
-        if (src == dest)
-            return;
+        if constexpr (std::equality_comparable_with<SrcType, DestType>) {
+            if (src == dest)
+                return;
+        }
+
         load64(src, scratchRegister());
         store64(scratchRegister(), dest);
     }
 
-    void transferFloat(Address src, Address dest)
-    {
-        transfer32(src, dest);
-    }
+    void transferPtr(auto src, auto dest) { transfer64(src, dest); }
+    void transferFloat(auto src, auto dest) { transfer32(src, dest); }
+    void transferDouble(auto src, auto dest) { transfer64(src, dest); }
 
-    void transferDouble(Address src, Address dest)
+    template<typename SrcType, typename DestType>
+    void transferVector(SrcType src, DestType dest)
     {
-        transfer64(src, dest);
-    }
+        if constexpr (std::equality_comparable_with<SrcType, DestType>) {
+            if (src == dest)
+                return;
+        }
 
-    void transferVector(Address src, Address dest)
-    {
-        if (src == dest)
-            return;
         loadVector(src, fpTempRegister);
         storeVector(fpTempRegister, dest);
-    }
-
-    void transferPtr(Address src, Address dest)
-    {
-        transfer64(src, dest);
-    }
-
-    void transfer32(BaseIndex src, BaseIndex dest)
-    {
-        if (src == dest)
-            return;
-        load32(src, scratchRegister());
-        store32(scratchRegister(), dest);
-    }
-
-    void transfer64(BaseIndex src, BaseIndex dest)
-    {
-        if (src == dest)
-            return;
-        load64(src, scratchRegister());
-        store64(scratchRegister(), dest);
-    }
-
-    void transferFloat(BaseIndex src, BaseIndex dest)
-    {
-        transfer32(src, dest);
-    }
-
-    void transferDouble(BaseIndex src, BaseIndex dest)
-    {
-        transfer64(src, dest);
-    }
-
-    void transferVector(BaseIndex src, BaseIndex dest)
-    {
-        if (src == dest)
-            return;
-        loadVector(src, fpTempRegister);
-        storeVector(fpTempRegister, dest);
-    }
-
-    void transferPtr(BaseIndex src, BaseIndex dest)
-    {
-        transfer64(src, dest);
     }
 
     DataLabel32 store64WithAddressOffsetPatch(RegisterID src, Address address)
@@ -7649,16 +7650,44 @@ public:
 
     void add64(FPRegisterID left, FPRegisterID right, FPRegisterID dest)
     {
-        UNUSED_PARAM(left);
-        UNUSED_PARAM(right);
-        UNUSED_PARAM(dest);
+        if (supportsAVX()) {
+            m_assembler.vpaddq_rrr(right, left, dest);
+            return;
+        }
+
+        if (left == dest && right == dest)
+            m_assembler.paddq_rr(dest, dest);
+        else if (left == dest)
+            m_assembler.paddq_rr(right, dest);
+        else if (right == dest)
+            m_assembler.paddq_rr(left, dest);
+        else {
+            m_assembler.movaps_rr(left, dest);
+            m_assembler.paddq_rr(right, dest);
+        }
     }
 
     void sub64(FPRegisterID left, FPRegisterID right, FPRegisterID dest)
     {
-        UNUSED_PARAM(left);
-        UNUSED_PARAM(right);
-        UNUSED_PARAM(dest);
+        if (supportsAVX()) {
+            m_assembler.vpsubq_rrr(right, left, dest);
+            return;
+        }
+
+        // SSE implementation uses macro assembler register.
+        if (dest == left) {
+            m_assembler.psubq_rr(right, dest);
+            return;
+        }
+
+        FPRegisterID safeRight = right;
+        if (dest == right) {
+            moveDouble(right, fpTempRegister);
+            safeRight = fpTempRegister;
+        }
+
+        moveDouble(left, dest);
+        m_assembler.psubq_rr(safeRight, dest);
     }
 
     void vectorAdd(SIMDInfo simdInfo, FPRegisterID left, FPRegisterID right, FPRegisterID dest)
@@ -7737,6 +7766,106 @@ public:
         case SIMDLane::i64x2:
             RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("i64x2 multiply is not supported on Intel without AVX-512. This instruction should have been lowered before reaching the assembler.");
             break;
+        default:
+            RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("Invalid SIMD lane for vector multiply.");
+        }
+    }
+
+    void vectorMulHigh(SIMDInfo simdInfo, FPRegisterID left, FPRegisterID right, FPRegisterID dest, FPRegisterID scratch)
+    {
+        RELEASE_ASSERT(supportsAVX());
+        ASSERT(!scalarTypeIsFloatingPoint(simdInfo.lane));
+        ASSERT(simdInfo.signMode != SIMDSignMode::None);
+
+        switch (simdInfo.lane) {
+        case SIMDLane::i16x8: {
+            if (simdInfo.signMode == SIMDSignMode::Signed) {
+                m_assembler.vpunpckhbw_rrr(left, left, scratch);
+                m_assembler.vpsraw_i8rr(8, scratch, scratch);
+                m_assembler.vpunpckhbw_rrr(right, right, dest);
+                m_assembler.vpsraw_i8rr(8, dest, dest);
+                m_assembler.vpmullw_rrr(scratch, dest, dest);
+            } else {
+                moveZeroToVector(scratch);
+                if (left == right) {
+                    m_assembler.vpunpckhbw_rrr(scratch, right, dest);
+                    m_assembler.vpmullw_rrr(dest, dest, dest);
+                } else {
+                    if (dest == left) {
+                        m_assembler.vpunpckhbw_rrr(scratch, left, dest);
+                        m_assembler.vpunpckhbw_rrr(scratch, right, scratch);
+                    } else {
+                        m_assembler.vpunpckhbw_rrr(scratch, right, dest);
+                        m_assembler.vpunpckhbw_rrr(scratch, left, scratch);
+                    }
+                    m_assembler.vpmullw_rrr(dest, scratch, dest);
+                }
+            }
+            break;
+        }
+        case SIMDLane::i32x4: {
+            m_assembler.vpmullw_rrr(right, left, scratch);
+            if (simdInfo.signMode == SIMDSignMode::Signed)
+                m_assembler.vpmulhw_rrr(right, left, dest);
+            else
+                m_assembler.vpmulhuw_rrr(right, left, dest);
+            m_assembler.vpunpckhwd_rrr(dest, scratch, dest);
+            break;
+        }
+        case SIMDLane::i64x2: {
+            m_assembler.vpunpckhdq_rrr(left, left, scratch);
+            m_assembler.vpunpckhdq_rrr(right, right, dest);
+            if (simdInfo.signMode == SIMDSignMode::Signed)
+                m_assembler.vpmuldq_rrr(scratch, dest, dest);
+            else
+                m_assembler.vpmuludq_rrr(scratch, dest, dest);
+            break;
+        }
+        case SIMDLane::f32x4:
+        case SIMDLane::f64x2:
+        default:
+            RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("Invalid SIMD lane for vector multiply.");
+        }
+    }
+
+    void vectorMulLow(SIMDInfo simdInfo, FPRegisterID left, FPRegisterID right, FPRegisterID dest, FPRegisterID scratch)
+    {
+        RELEASE_ASSERT(supportsAVX());
+        ASSERT(!scalarTypeIsFloatingPoint(simdInfo.lane));
+        ASSERT(simdInfo.signMode != SIMDSignMode::None);
+
+        switch (simdInfo.lane) {
+        case SIMDLane::i16x8: {
+            if (simdInfo.signMode == SIMDSignMode::Signed) {
+                m_assembler.vpmovsxbw_rr(left, scratch);
+                m_assembler.vpmovsxbw_rr(right, dest);
+            } else {
+                m_assembler.vpmovzxbw_rr(left, scratch);
+                m_assembler.vpmovzxbw_rr(right, dest);
+            }
+            m_assembler.vpmullw_rrr(scratch, dest, dest);
+            break;
+        }
+        case SIMDLane::i32x4: {
+            m_assembler.vpmullw_rrr(right, left, scratch);
+            if (simdInfo.signMode == SIMDSignMode::Signed)
+                m_assembler.vpmulhw_rrr(right, left, dest);
+            else
+                m_assembler.vpmulhuw_rrr(right, left, dest);
+            m_assembler.vpunpcklwd_rrr(dest, scratch, dest);
+            break;
+        }
+        case SIMDLane::i64x2: {
+            m_assembler.vpunpckldq_rrr(left, left, scratch);
+            m_assembler.vpunpckldq_rrr(right, right, dest);
+            if (simdInfo.signMode == SIMDSignMode::Signed)
+                m_assembler.vpmuldq_rrr(scratch, dest, dest);
+            else
+                m_assembler.vpmuludq_rrr(scratch, dest, dest);
+            break;
+        }
+        case SIMDLane::f32x4:
+        case SIMDLane::f64x2:
         default:
             RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("Invalid SIMD lane for vector multiply.");
         }
@@ -8396,13 +8525,13 @@ public:
 
         // Unpack and zero-extend low input bytes.
         m_assembler.vxorps_rrr(tmp2, tmp2, tmp2);
-        m_assembler.vpunpcklbw_rrr(input, tmp2, tmp1);
+        m_assembler.vpunpcklbw_rrr(tmp2, input, tmp1);
 
         // Word-wise shift low input bytes into tmp1.
         m_assembler.vpsllw_rrr(shift, tmp1, tmp1);
 
         // Unpack and zero-extend high input bytes.
-        m_assembler.vpunpckhbw_rrr(input, tmp2, tmp2);
+        m_assembler.vpunpckhbw_rrr(tmp2, input, tmp2);
 
         // Word-wise shift high input bytes into tmp2.
         m_assembler.vpsllw_rrr(shift, tmp2, tmp2);
@@ -8423,13 +8552,13 @@ public:
 
         // Unpack and zero-extend low input bytes.
         m_assembler.vxorps_rrr(tmp2, tmp2, tmp2);
-        m_assembler.vpunpcklbw_rrr(input, tmp2, tmp1);
+        m_assembler.vpunpcklbw_rrr(tmp2, input, tmp1);
 
         // Word-wise shift low input bytes into tmp1.
         m_assembler.vpsrlw_rrr(shift, tmp1, tmp1);
 
         // Unpack and zero-extend high input bytes.
-        m_assembler.vpunpckhbw_rrr(input, tmp2, tmp2);
+        m_assembler.vpunpckhbw_rrr(tmp2, input, tmp2);
 
         // Word-wise shift high input bytes into tmp2.
         m_assembler.vpsrlw_rrr(shift, tmp2, tmp2);
@@ -8555,7 +8684,7 @@ public:
             return;
         case SIMDLane::i8x16:
             vectorReplaceLane(SIMDLane::i8x16, TrustedImm32(1), src, dest);
-            FALLTHROUGH;
+            [[fallthrough]];
         case SIMDLane::i16x8:
             m_assembler.vpshuflw_i8rr(0, dest, dest);
             m_assembler.vpunpcklqdq_rrr(dest, dest, dest);
@@ -8583,7 +8712,7 @@ public:
             return;
         case SIMDLane::i8x16:
             vectorReplaceLane(SIMDLane::i8x16, TrustedImm32(1), src, dest);
-            FALLTHROUGH;
+            [[fallthrough]];
         case SIMDLane::i16x8:
             m_assembler.pshuflw_i8rr(0, dest, dest);
             m_assembler.punpcklqdq_rr(dest, dest);

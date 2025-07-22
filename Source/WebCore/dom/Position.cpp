@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2015-2018 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,7 @@
 
 #include "BoundaryPoint.h"
 #include "CSSComputedStyleDeclaration.h"
+#include "ContainerNodeInlines.h"
 #include "EditingInlines.h"
 #include "ElementInlines.h"
 #include "HTMLBRElement.h"
@@ -51,6 +52,7 @@
 #include "RenderInline.h"
 #include "RenderIterator.h"
 #include "RenderLineBreak.h"
+#include "RenderObjectInlines.h"
 #include "RenderText.h"
 #include "SVGElementTypeHelpers.h"
 #include "SVGTextElement.h"
@@ -59,6 +61,7 @@
 #include "VisiblePosition.h"
 #include "VisibleUnits.h"
 #include <stdio.h>
+#include <wtf/StdLibExtras.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/MakeString.h>
 #include <wtf/text/TextStream.h>
@@ -349,7 +352,7 @@ RefPtr<Element> Position::anchorElementAncestor() const
 
 Position Position::previous(PositionMoveType moveType) const
 {
-    auto node = protectedDeprecatedNode();
+    RefPtr node = deprecatedNode();
     if (!node)
         return *this;
 
@@ -406,7 +409,7 @@ Position Position::next(PositionMoveType moveType) const
 {
     ASSERT(moveType != BackwardDeletion);
 
-    auto node = protectedDeprecatedNode();
+    RefPtr node = deprecatedNode();
     if (!node)
         return *this;
 
@@ -626,7 +629,7 @@ static bool endsOfNodeAreVisuallyDistinctPositions(Node* node)
     if (is<HTMLTableElement>(*node))
         return false;
     
-    if (!node->renderer()->isReplacedOrAtomicInline() || !canHaveChildrenForEditing(*node) || !downcast<RenderBox>(*node->renderer()).height())
+    if (!node->renderer()->isBlockLevelReplacedOrAtomicInline() || !canHaveChildrenForEditing(*node) || !downcast<RenderBox>(*node->renderer()).height())
         return false;
 
     // There is a VisiblePosition inside an empty inline-block container.
@@ -1118,7 +1121,7 @@ Position Position::leadingWhitespacePosition(Affinity affinity, bool considerNon
     RefPtr previousNode = prev.deprecatedNode();
     if (prev != *this && inSameEnclosingBlockFlowElement(node.get(), previousNode.get())) {
         if (auto* previousText = dynamicDowncast<Text>(*previousNode)) {
-            UChar c = previousText->data()[prev.deprecatedEditingOffset()];
+            char16_t c = previousText->data()[prev.deprecatedEditingOffset()];
             if (considerNonCollapsibleWhitespace ? (isASCIIWhitespace(c) || c == noBreakSpace) : deprecatedIsCollapsibleWhitespace(c)) {
                 if (isEditablePosition(prev))
                     return prev;
@@ -1137,7 +1140,7 @@ Position Position::trailingWhitespacePosition(Affinity, bool considerNonCollapsi
         return { };
     
     VisiblePosition v(*this);
-    UChar c = v.characterAfter();
+    char16_t c = v.characterAfter();
     // The space must not be in another paragraph and it must be editable.
     if (!isEndOfParagraph(v) && v.next(CannotCrossEditingBoundary).isNotNull())
         if (considerNonCollapsibleWhitespace ? (isASCIIWhitespace(c) || c == noBreakSpace) : deprecatedIsCollapsibleWhitespace(c))
@@ -1201,7 +1204,7 @@ InlineBoxAndOffset Position::inlineBoxAndOffset(Affinity affinity, TextDirection
 {
     auto caretOffset = static_cast<unsigned>(deprecatedEditingOffset());
 
-    auto node = protectedDeprecatedNode();
+    RefPtr node = deprecatedNode();
     if (!node)
         return { { }, caretOffset };
     auto renderer = node->renderer();
@@ -1385,8 +1388,6 @@ TextDirection Position::primaryDirection() const
 
 #if ENABLE(TREE_DEBUGGING)
 
-
-WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 void Position::debugPosition(ASCIILiteral msg) const
 {
     if (isNull())
@@ -1404,29 +1405,30 @@ String Position::debugDescription() const
 
 void Position::showAnchorTypeAndOffset() const
 {
+    ASCIILiteral legacy = ""_s;
     if (m_isLegacyEditingPosition)
-        fputs("legacy, ", stderr);
+        legacy = "legacy, "_s;
+
+    ASCIILiteral position;
     switch (anchorType()) {
     case PositionIsOffsetInAnchor:
-        fputs("offset", stderr);
+        position = "offset"_s;
         break;
     case PositionIsBeforeChildren:
-        fputs("beforeChildren", stderr);
+        position = "beforeChildren"_s;
         break;
     case PositionIsAfterChildren:
-        fputs("afterChildren", stderr);
+        position = "afterChildren"_s;
         break;
     case PositionIsBeforeAnchor:
-        fputs("before", stderr);
+        position = "before"_s;
         break;
     case PositionIsAfterAnchor:
-        fputs("after", stderr);
+        position = "after"_s;
         break;
     }
-    fprintf(stderr, ", offset:%d\n", m_offset);
+    SAFE_FPRINTF(stderr, "%s%s, offset:%d\n", legacy, position, m_offset);
 }
-
-WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 
 void Position::showTreeForThis() const
 {
@@ -1642,7 +1644,7 @@ template<TreeType treeType> std::partial_ordering treeOrder(const Position& a, c
     return treeOrder<treeType>(*makeBoundaryPoint(a), *makeBoundaryPoint(b));
 }
 
-std::partial_ordering documentOrder(const Position& a, const Position& b)
+std::partial_ordering operator<=>(const Position& a, const Position& b)
 {
     return treeOrder<ComposedTree>(a, b);
 }

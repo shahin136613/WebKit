@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2021 Igalia S.L.
  * Author: Caitlin Potter <caitp@igalia.com>
- * Copyright (C) 2022 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 #include "AuxiliaryBarrier.h"
 #include "JSFunction.h"
 #include "JSObject.h"
+#include "JSString.h"
 #include <wtf/TaggedArrayStoragePtr.h>
 
 namespace JSC {

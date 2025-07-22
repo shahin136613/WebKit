@@ -42,9 +42,8 @@ class PredictionPropagationPhase : public Phase {
 public:
     PredictionPropagationPhase(Graph& graph)
         : Phase(graph, "prediction propagation"_s)
-        , m_tupleSpeculations(graph.m_tupleData.size())
+        , m_tupleSpeculations(graph.m_tupleData.size(), SpecNone)
     {
-        m_tupleSpeculations.fill(SpecNone);
     }
     
     bool run()
@@ -639,6 +638,11 @@ private:
             break;
         }
 
+        case MultiGetByVal: {
+            changed |= mergePrediction(node->getHeapPrediction());
+            break;
+        }
+
         case StringAt: {
             if (node->arrayMode().isOutOfBounds())
                 changed |= mergePrediction(SpecString | SpecOther);
@@ -998,7 +1002,8 @@ private:
         case ArithBitXor:
         case ArithBitRShift:
         case ArithBitLShift:
-        case BitURShift:
+        case ArithBitURShift:
+        case ValueBitURShift: // URShift >>> does not accept BigInt.
         case ArithIMul:
         case ArithClz32: {
             setPrediction(SpecInt32Only);
@@ -1140,7 +1145,8 @@ private:
             break;
 
         case GetRestLength:
-        case ArrayIndexOf: {
+        case ArrayIndexOf:
+        case RegExpSearch: {
             setPrediction(SpecInt32Only);
             break;
         }
@@ -1247,6 +1253,9 @@ private:
         case NumberIsInteger:
         case GlobalIsNaN:
         case NumberIsNaN:
+        case GlobalIsFinite:
+        case NumberIsFinite:
+        case NumberIsSafeInteger:
         case IsObject:
         case IsCallable:
         case IsConstructor:
@@ -1433,6 +1442,7 @@ private:
         }
 
         case GetScope:
+        case GetEvalScope:
             setPrediction(SpecObjectOther);
             break;
 
@@ -1529,6 +1539,7 @@ private:
         case ArithMod:
         case ArithAbs:
         case GetByVal:
+        case MultiGetByVal:
         case ToThis:
         case ToPrimitive: 
         case ToPropertyKey:
@@ -1637,6 +1648,7 @@ private:
         case PutByValWithThis:
         case PutByIdWithThis:
         case PutByVal:
+        case MultiPutByVal:
         case PutByValMegamorphic:
         case PutPrivateName:
         case PutPrivateNameById:

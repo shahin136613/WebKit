@@ -74,24 +74,10 @@ bool ContainerQueryParser::isValidFunctionId(CSSValueID functionId)
 
 const MQ::FeatureSchema* ContainerQueryParser::schemaForFeatureName(const AtomString& name, const MediaQueryParserContext& context, State& state)
 {
-    if (state.inFunctionId == CSSValueStyle && context.context.cssStyleQueriesEnabled)
+    if (state.inFunctionId == CSSValueStyle)
         return &Features::style();
 
     return GenericMediaQueryParser<ContainerQueryParser>::schemaForFeatureName(name, context, state);
-}
-
-const ContainerProgressProviding* ContainerQueryParser::containerProgressProvidingSchemaForFeatureName(const AtomString& name, const MediaQueryParserContext&)
-{
-    using Map = MemoryCompactLookupOnlyRobinHoodHashMap<AtomString, const ContainerProgressProviding*>;
-
-    static NeverDestroyed<Map> schemas = [&] {
-        Map map;
-        for (auto& entry : Features::allContainerProgressProvidingSchemas())
-            map.add(entry->name(), entry);
-        return map;
-    }();
-
-    return schemas->get(name);
 }
 
 }

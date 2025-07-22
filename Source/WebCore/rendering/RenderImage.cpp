@@ -58,6 +58,7 @@
 #include "RenderElementInlines.h"
 #include "RenderFragmentedFlow.h"
 #include "RenderImageResourceStyleImage.h"
+#include "RenderObjectInlines.h"
 #include "RenderStyleInlines.h"
 #include "RenderStyleSetters.h"
 #include "RenderTheme.h"
@@ -305,18 +306,6 @@ LayoutUnit RenderImage::computeReplacedLogicalHeight(std::optional<LayoutUnit> e
     return RenderReplaced::computeReplacedLogicalHeight(estimatedUsedWidth);
 }
 
-LayoutUnit RenderImage::baselinePosition(FontBaseline baselineType, bool firstLine, LineDirectionMode direction, LinePositionMode linePositionMode) const
-{
-    LayoutUnit offset;
-#if ENABLE(MULTI_REPRESENTATION_HEIC)
-    if (isMultiRepresentationHEIC()) {
-        auto metrics = style().fontCascade().primaryFont()->metricsForMultiRepresentationHEIC();
-        offset = LayoutUnit::fromFloatRound(metrics.descent);
-    }
-#endif
-    return RenderBox::baselinePosition(baselineType, firstLine, direction, linePositionMode) - offset;
-}
-
 void RenderImage::imageChanged(WrappedImagePtr newImage, const IntRect* rect)
 {
     if (renderTreeBeingDestroyed())
@@ -409,7 +398,9 @@ void RenderImage::repaintOrMarkForLayout(ImageSizeChangeType imageSizeChange, co
         if (rect) {
             // The image changed rect is in source image coordinates (pre-zooming),
             // so map from the bounds of the image to the contentsBox.
-            repaintRect.intersect(enclosingIntRect(mapRect(*rect, FloatRect(FloatPoint(), imageResource().imageSize(1.0f)), repaintRect)));
+            RefPtr<Image> srcImg = imageResource().image(flooredIntSize(contentBoxSize()));
+            FloatSize sourceSize = srcImg->size() / style().usedZoom();
+            repaintRect.intersect(enclosingIntRect(mapRect(*rect, FloatRect(FloatPoint(), sourceSize), repaintRect)));
         }
         repaintRectangle(repaintRect);
     }
@@ -499,6 +490,8 @@ static bool isDeferredImage(Element* element)
 
 void RenderImage::paintReplaced(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
+    ASSERT(!isSkippedContentRoot(*this));
+
     GraphicsContext& context = paintInfo.context();
     if (context.invalidatingImagesWithAsyncDecodes()) {
         if (cachedImage() && cachedImage()->isClientWaitingForAsyncDecoding(*this))
@@ -738,6 +731,7 @@ ImageDrawResult RenderImage::paintIntoRect(PaintInfo& paintInfo, const FloatRect
 #if USE(SKIA)
         StrictImageClamping::No,
 #endif
+        paintInfo.paintBehavior.contains(PaintBehavior::DrawsHDRContent) ? DrawsHDRContent::Yes : DrawsHDRContent::No,
         style().dynamicRangeLimit().toPlatformDynamicRangeLimit()
     };
 
@@ -774,7 +768,7 @@ bool RenderImage::foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect,
         return false;
     if (!contentBoxRect().contains(localRect))
         return false;
-    FillBox backgroundClip = style().backgroundClip();
+    auto backgroundClip = style().backgroundClip();
     // Background paints under borders.
     if (backgroundClip == FillBox::BorderBox && style().hasBorder() && !borderObscuresBackground())
         return false;
@@ -782,12 +776,10 @@ bool RenderImage::foregroundIsKnownToBeOpaqueInRect(const LayoutRect& localRect,
     if ((backgroundClip == FillBox::BorderBox || backgroundClip == FillBox::PaddingBox) && style().hasPadding())
         return false;
     // Object-fit may leave parts of the content box empty.
-    ObjectFit objectFit = style().objectFit();
-    if (objectFit != ObjectFit::Fill && objectFit != ObjectFit::Cover)
+    if (auto objectFit = style().objectFit(); objectFit != ObjectFit::Fill && objectFit != ObjectFit::Cover)
         return false;
 
-    LengthPoint objectPosition = style().objectPosition();
-    if (objectPosition != RenderStyle::initialObjectPosition())
+    if (style().objectPosition() != RenderStyle::initialObjectPosition())
         return false;
 
     // Check for image with alpha.
@@ -875,10 +867,10 @@ void RenderImage::layout()
         layoutShadowContent(oldSize);
 }
 
-void RenderImage::computeIntrinsicRatioInformation(FloatSize& intrinsicSize, FloatSize& intrinsicRatio) const
+void RenderImage::computeIntrinsicSizeAndPreferredAspectRatio(FloatSize& intrinsicSize, FloatSize& preferredAspectRatio) const
 {
     ASSERT(!shouldApplySizeContainment());
-    RenderReplaced::computeIntrinsicRatioInformation(intrinsicSize, intrinsicRatio);
+    RenderReplaced::computeIntrinsicSizeAndPreferredAspectRatio(intrinsicSize, preferredAspectRatio);
 
     // Our intrinsicSize is empty if we're rendering generated images with relative width/height. Figure out the right intrinsic size to use.
     if (intrinsicSize.isEmpty() && (imageResource().imageHasRelativeWidth() || imageResource().imageHasRelativeHeight())) {
@@ -891,17 +883,17 @@ void RenderImage::computeIntrinsicRatioInformation(FloatSize& intrinsicSize, Flo
 
     // Don't compute an intrinsic ratio to preserve historical WebKit behavior if we're painting alt text and/or a broken image.
     if (shouldDisplayBrokenImageIcon()) {
-        if (style().aspectRatioType() == AspectRatioType::AutoAndRatio && !isShowingAltText())
-            intrinsicRatio = FloatSize::narrowPrecision(style().aspectRatioLogicalWidth(), style().aspectRatioLogicalHeight());
+        if (style().aspectRatio().isAutoAndRatio() && !isShowingAltText())
+            preferredAspectRatio = FloatSize::narrowPrecision(style().aspectRatioLogicalWidth().value, style().aspectRatioLogicalHeight().value);
         else
-            intrinsicRatio = { 1.0, 1.0 };
+            preferredAspectRatio = { 1.0, 1.0 };
         return;
     }
 }
 
-bool RenderImage::needsPreferredWidthsRecalculation() const
+bool RenderImage::shouldInvalidatePreferredWidths() const
 {
-    if (RenderReplaced::needsPreferredWidthsRecalculation())
+    if (RenderReplaced::shouldInvalidatePreferredWidths())
         return true;
     return embeddedContentBox();
 }

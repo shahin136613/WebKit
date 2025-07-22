@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -130,18 +130,18 @@ static NSString * const _WKARQLWebsiteURLParameterKey = @"ARQLWebsiteURLParamete
     _itemProvider = adoptNS([[NSItemProvider alloc] init]);
     // FIXME: We are launching the preview controller before getting a response from the resource, which
     // means we don't actually know the real MIME type yet.
-    NSString *contentType = WebCore::UTIFromMIMEType("model/vnd.usdz+zip"_s);
+    RetainPtr contentType = WebCore::UTIFromMIMEType("model/vnd.usdz+zip"_s).createNSString();
 
 #if HAVE(ARKIT_QUICK_LOOK_PREVIEW_ITEM)
-    auto previewItem = adoptNS([WebKit::allocARQuickLookPreviewItemInstance() initWithFileAtURL:_downloadedURL]);
-    [previewItem setCanonicalWebPageURL:_originatingPageURL];
+    RetainPtr previewItem = adoptNS([WebKit::allocARQuickLookPreviewItemInstance() initWithFileAtURL:_downloadedURL.createNSURL().get()]);
+    [previewItem setCanonicalWebPageURL:_originatingPageURL.createNSURL().get()];
 
-    _item = adoptNS([allocARQuickLookWebKitItemInstance() initWithPreviewItemProvider:_itemProvider.get() contentType:contentType previewTitle:@"Preview" fileSize:@(0) previewItem:previewItem.get()]);
+    _item = adoptNS([allocARQuickLookWebKitItemInstance() initWithPreviewItemProvider:_itemProvider.get() contentType:contentType.get() previewTitle:@"Preview" fileSize:@(0) previewItem:previewItem.get()]);
     [_item setDelegate:self];
 
     if ([_item respondsToSelector:(@selector(setAdditionalParameters:))]) {
-        NSURL *urlParameter = _originatingPageURL;
-        [_item setAdditionalParameters:@{ _WKARQLWebsiteURLParameterKey: urlParameter }];
+        RetainPtr urlParameter = _originatingPageURL.createNSURL();
+        [_item setAdditionalParameters:@{ _WKARQLWebsiteURLParameterKey: urlParameter.get() }];
     }
 
 #else
@@ -150,12 +150,12 @@ static NSString * const _WKARQLWebsiteURLParameterKey = @"ARQLWebsiteURLParamete
     [_item setUseLoadingTimeout:NO];
 
     WeakObjCPtr<_WKPreviewControllerDataSource> weakSelf { self };
-    [_itemProvider registerItemForTypeIdentifier:contentType loadHandler:[weakSelf = WTFMove(weakSelf)] (NSItemProviderCompletionHandler completionHandler, Class expectedValueClass, NSDictionary * options) {
+    [_itemProvider registerItemForTypeIdentifier:contentType.get() loadHandler:[weakSelf = WTFMove(weakSelf)] (NSItemProviderCompletionHandler completionHandler, Class expectedValueClass, NSDictionary * options) {
         if (auto strongSelf = weakSelf.get()) {
             // If the download happened instantly, the call to finish might have come before this
             // loadHandler. In that case, call the completionHandler here.
             if (!strongSelf->_downloadedURL.isEmpty())
-                completionHandler((NSURL *)strongSelf->_downloadedURL, nil);
+                completionHandler(strongSelf->_downloadedURL.createNSURL().get(), nil);
             else
                 [strongSelf setCompletionHandler:completionHandler];
         }
@@ -174,7 +174,7 @@ static NSString * const _WKARQLWebsiteURLParameterKey = @"ARQLWebsiteURLParamete
     _downloadedURL = url;
 
     if (self.completionHandler)
-        self.completionHandler((NSURL *)url, nil);
+        self.completionHandler(url.createNSURL().get(), nil);
 }
 
 - (void)failWithError:(NSError *)error
@@ -415,8 +415,8 @@ void SystemPreviewController::begin(const URL& url, const WebCore::SecurityOrigi
         RefPtr webPageProxy = protectedThis->m_webPageProxy.get();
         if (!webPageProxy)
             return completionHandler();
-        RELEASE_LOG(SystemPreview, "SystemPreview began on %lld", protectedThis->m_systemPreviewInfo.element.elementIdentifier ? protectedThis->m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
-        auto request = WebCore::ResourceRequest(url);
+        RELEASE_LOG(SystemPreview, "SystemPreview began on %lld", protectedThis->m_systemPreviewInfo.element.nodeIdentifier ? protectedThis->m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
+        auto request = WebCore::ResourceRequest(URL { url });
         bool shouldRunAtForegroundPriority = false;
         webPageProxy->dataTaskWithRequest(WTFMove(request), topOrigin, shouldRunAtForegroundPriority, [weakThis, completionHandler = WTFMove(completionHandler)] (Ref<API::DataTask>&& task) mutable {
             if (!weakThis)
@@ -452,8 +452,8 @@ void SystemPreviewController::begin(const URL& url, const WebCore::SecurityOrigi
     m_allowPreviewCallback = makeBlockPtr([successHandler = WTFMove(successHandler)](bool success) mutable {
         successHandler(success);
     });
-    auto alert = WebKit::createUIAlertController(WEB_UI_NSSTRING(@"Open this 3D model?", "Open this 3D model?"), nil);
-    UIAlertAction* allowAction = [UIAlertAction actionWithTitle:WEB_UI_NSSTRING_KEY(@"Allow", @"Allow (usdz QuickLook Preview)", "Allow displaying QuickLook Preview of 3D model") style:UIAlertActionStyleDefault handler:[weakThis = WeakPtr { *this }](UIAlertAction *) mutable {
+    auto alert = WebKit::createUIAlertController(WEB_UI_NSSTRING(@"View in AR?", "View in AR?"), WEB_UI_NSSTRING(@"You can view this object in 3D and place it in your surroundings using augmented reality.", "You can view this object in 3D and place it in your surroundings using augmented reality."));
+    UIAlertAction* allowAction = [UIAlertAction actionWithTitle:WEB_UI_NSSTRING_KEY(@"View in AR", @"View in AR (usdz QuickLook Preview)", "Allow displaying QuickLook Preview of 3D model") style:UIAlertActionStyleDefault handler:[weakThis = WeakPtr { *this }](UIAlertAction *) mutable {
         if (!weakThis)
             return;
 
@@ -473,7 +473,7 @@ void SystemPreviewController::begin(const URL& url, const WebCore::SecurityOrigi
     if (m_testingCallback)
         std::exchange(m_allowPreviewCallback, nullptr)(true);
     else if (m_showPreviewDelay) {
-        RunLoop::protectedMain()->dispatchAfter(Seconds { m_showPreviewDelay }, [alert, presentingViewController] {
+        RunLoop::mainSingleton().dispatchAfter(Seconds { m_showPreviewDelay }, [alert, presentingViewController] {
             [presentingViewController presentViewController:alert.get() animated:YES completion:nil];
         });
         m_showPreviewDelay = 0;
@@ -483,7 +483,7 @@ void SystemPreviewController::begin(const URL& url, const WebCore::SecurityOrigi
 
 void SystemPreviewController::loadStarted(const URL& localFileURL)
 {
-    RELEASE_LOG(SystemPreview, "SystemPreview load has started on %lld", m_systemPreviewInfo.element.elementIdentifier ? m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
+    RELEASE_LOG(SystemPreview, "SystemPreview load has started on %lld", m_systemPreviewInfo.element.nodeIdentifier ? m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
     m_localFileURL = localFileURL;
 
     // Take the local URL, but add on the fragment from the original request URL.
@@ -492,7 +492,7 @@ void SystemPreviewController::loadStarted(const URL& localFileURL)
 
 #if PLATFORM(VISION)
     if ([getASVLaunchPreviewClass() respondsToSelector:@selector(beginPreviewApplicationWithURLs:is3DContent:websiteURL:completion:)])
-        [getASVLaunchPreviewClass() beginPreviewApplicationWithURLs:localFileURLs() is3DContent:YES websiteURL:m_downloadURL completion:^(NSError *error) { }];
+        [getASVLaunchPreviewClass() beginPreviewApplicationWithURLs:localFileURLs() is3DContent:YES websiteURL:m_downloadURL.createNSURL().get() completion:^(NSError *error) { }];
 #endif
 
     m_state = State::Loading;
@@ -500,7 +500,7 @@ void SystemPreviewController::loadStarted(const URL& localFileURL)
 
 void SystemPreviewController::loadCompleted(const URL& localFileURL)
 {
-    RELEASE_LOG(SystemPreview, "SystemPreview load has finished on %lld", m_systemPreviewInfo.element.elementIdentifier ? m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
+    RELEASE_LOG(SystemPreview, "SystemPreview load has finished on %lld", m_systemPreviewInfo.element.nodeIdentifier ? m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
 
     ASSERT(equalIgnoringFragmentIdentifier(m_localFileURL, localFileURL));
 
@@ -521,7 +521,7 @@ void SystemPreviewController::loadCompleted(const URL& localFileURL)
 
 void SystemPreviewController::loadFailed()
 {
-    RELEASE_LOG(SystemPreview, "SystemPreview load has failed on %lld", m_systemPreviewInfo.element.elementIdentifier ? m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
+    RELEASE_LOG(SystemPreview, "SystemPreview load has failed on %lld", m_systemPreviewInfo.element.nodeIdentifier ? m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
 
 #if PLATFORM(VISION)
     if (m_state == State::Loading && [getASVLaunchPreviewClass() respondsToSelector:@selector(cancelPreviewApplicationWithURLs:error:completion:)])
@@ -548,7 +548,7 @@ void SystemPreviewController::loadFailed()
 
 void SystemPreviewController::end()
 {
-    RELEASE_LOG(SystemPreview, "SystemPreview ended on %lld", m_systemPreviewInfo.element.elementIdentifier ? m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
+    RELEASE_LOG(SystemPreview, "SystemPreview ended on %lld", m_systemPreviewInfo.element.nodeIdentifier ? m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
 
 #if !PLATFORM(VISION)
     m_qlPreviewControllerDelegate = nullptr;
@@ -600,7 +600,7 @@ void SystemPreviewController::setCompletionHandlerForLoadTesting(CompletionHandl
 
 void SystemPreviewController::triggerSystemPreviewAction()
 {
-    RELEASE_LOG(SystemPreview, "SystemPreview action was triggered on %lld", m_systemPreviewInfo.element.elementIdentifier ? m_systemPreviewInfo.element.elementIdentifier->toUInt64() : 0);
+    RELEASE_LOG(SystemPreview, "SystemPreview action was triggered on %lld", m_systemPreviewInfo.element.nodeIdentifier ? m_systemPreviewInfo.element.nodeIdentifier->toUInt64() : 0);
 
     RefPtr page = this->page();
     if (!page)
@@ -609,7 +609,7 @@ void SystemPreviewController::triggerSystemPreviewAction()
     page->systemPreviewActionTriggered(m_systemPreviewInfo, "_apple_ar_quicklook_button_tapped"_s);
 }
 
-void SystemPreviewController::triggerSystemPreviewActionWithTargetForTesting(uint64_t elementID, NSString* documentID, uint64_t pageID)
+void SystemPreviewController::triggerSystemPreviewActionWithTargetForTesting(uint64_t nodeID, NSString* documentID, uint64_t pageID)
 {
     auto uuid = WTF::UUID::parseVersion4(String(documentID));
     ASSERT(uuid);
@@ -618,10 +618,10 @@ void SystemPreviewController::triggerSystemPreviewActionWithTargetForTesting(uin
         return;
 
     m_systemPreviewInfo.isPreview = true;
-    if (elementID)
-        m_systemPreviewInfo.element.elementIdentifier = ObjectIdentifier<WebCore::ElementIdentifierType>(elementID);
+    if (nodeID)
+        m_systemPreviewInfo.element.nodeIdentifier = ObjectIdentifier<WebCore::NodeIdentifierType>(nodeID);
     else
-        m_systemPreviewInfo.element.elementIdentifier = std::nullopt;
+        m_systemPreviewInfo.element.nodeIdentifier = std::nullopt;
     m_systemPreviewInfo.element.documentIdentifier = WebCore::ScriptExecutionContextIdentifier { *uuid, webPageProxy->legacyMainFrameProcess().coreProcessIdentifier() };
     m_systemPreviewInfo.element.webPageIdentifier = ObjectIdentifier<WebCore::PageIdentifierType>(pageID);
     triggerSystemPreviewAction();
@@ -629,8 +629,8 @@ void SystemPreviewController::triggerSystemPreviewActionWithTargetForTesting(uin
 
 NSArray *SystemPreviewController::localFileURLs() const
 {
-    NSURL *nsurl = (NSURL *)m_localFileURL;
-    return nsurl ? @[ nsurl ] : @[];
+    RetainPtr nsurl = m_localFileURL.createNSURL();
+    return nsurl ? @[ nsurl.get() ] : @[];
 }
 
 }

@@ -79,7 +79,7 @@ private:
     }
 
     void mapAsync(WebCore::WebGPU::MapModeFlags, WebCore::WebGPU::Size64 offset, std::optional<WebCore::WebGPU::Size64> sizeForMap, CompletionHandler<void(bool)>&&) final;
-    void getMappedRange(WebCore::WebGPU::Size64 offset, std::optional<WebCore::WebGPU::Size64>, NOESCAPE Function<void(std::span<uint8_t>)>&&) final;
+    void getMappedRange(WebCore::WebGPU::Size64 offset, std::optional<WebCore::WebGPU::Size64>, NOESCAPE const Function<void(std::span<uint8_t>)>&) final;
     std::span<uint8_t> getBufferContents() final;
     void unmap() final;
     void copyFrom(std::span<const uint8_t>, size_t offset) final;
@@ -89,8 +89,8 @@ private:
     void setLabelInternal(const String&) final;
 
     WebGPUIdentifier m_backing;
-    Ref<ConvertToBackingContext> m_convertToBackingContext;
-    Ref<RemoteDeviceProxy> m_parent;
+    const Ref<ConvertToBackingContext> m_convertToBackingContext;
+    const Ref<RemoteDeviceProxy> m_parent;
     WebCore::WebGPU::MapModeFlags m_mapModeFlags;
 };
 

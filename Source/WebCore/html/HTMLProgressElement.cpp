@@ -22,6 +22,7 @@
 #include "HTMLProgressElement.h"
 
 #include "AXObjectCache.h"
+#include "ContainerNodeInlines.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
 #include "ProgressShadowElement.h"
@@ -63,11 +64,6 @@ RenderPtr<RenderElement> HTMLProgressElement::createElementRenderer(RenderStyle&
     return createRenderer<RenderProgress>(*this, WTFMove(style));
 }
 
-bool HTMLProgressElement::childShouldCreateRenderer(const Node& child) const
-{
-    return hasShadowRootParent(child) && HTMLElement::childShouldCreateRenderer(child);
-}
-
 RenderProgress* HTMLProgressElement::renderProgress() const
 {
     if (auto* renderProgress = dynamicDowncast<RenderProgress>(renderer()))
@@ -101,11 +97,6 @@ double HTMLProgressElement::value() const
 {
     double value = parseHTMLFloatingPointNumberValue(attributeWithoutSynchronization(valueAttr));
     return !std::isfinite(value) || value < 0 ? 0 : std::min(value, max());
-}
-
-void HTMLProgressElement::setValue(double value)
-{
-    setAttributeWithoutSynchronization(valueAttr, AtomString::number(value));
 }
 
 double HTMLProgressElement::max() const

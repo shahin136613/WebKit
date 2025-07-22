@@ -30,30 +30,26 @@
 
 #pragma once
 
-#include "BlockEllipsis.h"
 #include "CSSPropertyNames.h"
 #include "CachedImage.h"
 #include "CalculationValue.h"
 #include "ColorBlending.h"
-#include "ContentData.h"
 #include "Document.h"
 #include "FloatConversion.h"
 #include "FontCascade.h"
 #include "FontSelectionAlgorithm.h"
 #include "FontSelectionValueInlines.h"
 #include "FontTaggedSettings.h"
-#include "GridPositionsResolver.h"
 #include "IdentityTransformOperation.h"
 #include "LengthPoint.h"
 #include "Logging.h"
 #include "Matrix3DTransformOperation.h"
 #include "MatrixTransformOperation.h"
-#include "QuotesData.h"
+#include "PathOperation.h"
 #include "RenderBox.h"
 #include "RenderStyleSetters.h"
 #include "SVGRenderStyle.h"
 #include "ScopedName.h"
-#include "ScrollbarGutter.h"
 #include "Settings.h"
 #include "StyleBoxShadow.h"
 #include "StyleCachedImage.h"
@@ -62,6 +58,7 @@
 #include "StyleFilterImage.h"
 #include "StyleInterpolationClient.h"
 #include "StyleInterpolationContext.h"
+#include "StylePrimitiveNumericTypes+Blending.h"
 #include "StyleResolver.h"
 #include "StyleTextEdge.h"
 #include <algorithm>
@@ -72,12 +69,12 @@ namespace WebCore::Style::Interpolation {
 
 inline int blendFunc(int from, int to, const Context& context)
 {
-    return blend(from, to, context);
+    return WebCore::blend(from, to, context);
 }
 
 inline double blendFunc(double from, double to, const Context& context)
 {
-    return blend(from, to, context);
+    return WebCore::blend(from, to, context);
 }
 
 inline float blendFunc(float from, float to, const Context& context)
@@ -95,66 +92,23 @@ inline float blendFunc(float from, float to, const Context& context)
 
 inline WebCore::Color blendFunc(const WebCore::Color& from, const WebCore::Color& to, const Context& context)
 {
-    return blend(from, to, context);
+    return WebCore::blend(from, to, context);
 }
 
 inline WebCore::Length blendFunc(const WebCore::Length& from, const WebCore::Length& to, const Context& context, ValueRange valueRange = ValueRange::All)
 {
-    return blend(from, to, context, valueRange);
-}
-
-inline bool canInterpolateLengths(const WebCore::Length& from, const WebCore::Length& to, bool isLengthPercentage)
-{
-    if (from.type() == to.type())
-        return true;
-
-    // Some properties allow for <length-percentage> and <number> values. We must allow animating
-    // between a <length> and a <percentage>, but exclude animating between a <number> and either
-    // a <length> or <percentage>. We can use Length::isRelative() to determine whether we are
-    // dealing with a <number> as opposed to a <length> or <percentage>.
-    if (isLengthPercentage) {
-        return (from.isFixed() || from.isPercentOrCalculated() || from.isRelative())
-            && (to.isFixed() || to.isPercentOrCalculated() || to.isRelative())
-            && from.isRelative() == to.isRelative();
-    }
-
-    if (from.isCalculated())
-        return to.isFixed() || to.isPercentOrCalculated();
-    if (to.isCalculated())
-        return from.isFixed() || from.isPercentOrCalculated();
-
-    return false;
-}
-
-inline GapLength blendFunc(const GapLength& from, const GapLength& to, const Context& context)
-{
-    if (from.isNormal() || to.isNormal())
-        return context.progress < 0.5 ? from : to;
-    return blend(from.length(), to.length(), context, ValueRange::NonNegative);
-}
-
-inline bool canInterpolateLengthVariants(const GapLength& from, const GapLength& to)
-{
-    if (from.isNormal() || to.isNormal())
-        return false;
-    bool isLengthPercentage = true;
-    return canInterpolateLengths(from.length(), to.length(), isLengthPercentage);
-}
-
-inline bool lengthVariantRequiresInterpolationForAccumulativeIteration(const GapLength& from, const GapLength& to)
-{
-    return from.isNormal() || to.isNormal() || lengthsRequireInterpolationForAccumulativeIteration(from.length(), to.length());
+    return WebCore::blend(from, to, context, valueRange);
 }
 
 inline TabSize blendFunc(const TabSize& from, const TabSize& to, const Context& context)
 {
-    auto blendedValue = blend(from.value(), to.value(), context);
+    auto blendedValue = WebCore::blend(from.value(), to.value(), context);
     return { blendedValue < 0 ? 0 : blendedValue, from.isSpaces() ? SpaceValueType : LengthValueType };
 }
 
 inline LengthSize blendFunc(const LengthSize& from, const LengthSize& to, const Context& context)
 {
-    return blend(from, to, context, ValueRange::NonNegative);
+    return WebCore::blend(from, to, context, ValueRange::NonNegative);
 }
 
 inline bool canInterpolateLengthVariants(const LengthSize& from, const LengthSize& to)
@@ -172,18 +126,7 @@ inline bool lengthVariantRequiresInterpolationForAccumulativeIteration(const Len
 
 inline LengthPoint blendFunc(const LengthPoint& from, const LengthPoint& to, const Context& context)
 {
-    return blend(from, to, context);
-}
-
-inline std::unique_ptr<ShadowData> blendFunc(const ShadowData* from, const ShadowData* to, const RenderStyle& fromStyle, const RenderStyle& toStyle, const Context& context)
-{
-    ASSERT(from);
-    ASSERT(to);
-    ASSERT(from->style() == to->style());
-
-    return makeUnique<ShadowData>(
-        Style::blend(from->asBoxShadow(), to->asBoxShadow(), fromStyle, toStyle, context)
-    );
+    return WebCore::blend(from, to, context);
 }
 
 inline TransformOperations blendFunc(const TransformOperations& from, const TransformOperations& to, const Context& context)
@@ -216,123 +159,9 @@ inline TransformOperations blendFunc(const TransformOperations& from, const Tran
     return to.blend(from, context, boxSize, prefix());
 }
 
-inline RefPtr<ScaleTransformOperation> blendFunc(ScaleTransformOperation* from, ScaleTransformOperation* to, const Context& context)
-{
-    if (!from && !to)
-        return nullptr;
-
-    RefPtr<ScaleTransformOperation> identity;
-    if (!from) {
-        identity = ScaleTransformOperation::create(1, 1, 1, to->type());
-        from = identity.get();
-    } else if (!to) {
-        identity = ScaleTransformOperation::create(1, 1, 1, from->type());
-        to = identity.get();
-    }
-
-    // Ensure the two transforms have the same type.
-    if (!from->isSameType(*to)) {
-        RefPtr<ScaleTransformOperation> normalizedFrom;
-        RefPtr<ScaleTransformOperation> normalizedTo;
-        if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::Type::Scale3D);
-            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::Type::Scale3D);
-        } else {
-            normalizedFrom = ScaleTransformOperation::create(from->x(), from->y(), TransformOperation::Type::Scale);
-            normalizedTo = ScaleTransformOperation::create(to->x(), to->y(), TransformOperation::Type::Scale);
-        }
-        return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
-    }
-
-    auto blendedOperation = to->blend(from, context);
-    if (auto* scale = dynamicDowncast<ScaleTransformOperation>(blendedOperation.get()))
-        return ScaleTransformOperation::create(scale->x(), scale->y(), scale->z(), scale->type());
-    return nullptr;
-}
-
-inline RefPtr<RotateTransformOperation> blendFunc(RotateTransformOperation* from, RotateTransformOperation* to, const Context& context)
-{
-    if (!from && !to)
-        return nullptr;
-
-    RefPtr<RotateTransformOperation> identity;
-    if (!from) {
-        identity = RotateTransformOperation::create(0, to->type());
-        from = identity.get();
-    } else if (!to) {
-        identity = RotateTransformOperation::create(0, from->type());
-        to = identity.get();
-    }
-
-    // Ensure the two transforms have the same type.
-    if (!from->isSameType(*to)) {
-        RefPtr<RotateTransformOperation> normalizedFrom;
-        RefPtr<RotateTransformOperation> normalizedTo;
-        if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = RotateTransformOperation::create(from->x(), from->y(), from->z(), from->angle(), TransformOperation::Type::Rotate3D);
-            normalizedTo = RotateTransformOperation::create(to->x(), to->y(), to->z(), to->angle(), TransformOperation::Type::Rotate3D);
-        } else {
-            normalizedFrom = RotateTransformOperation::create(from->angle(), TransformOperation::Type::Rotate);
-            normalizedTo = RotateTransformOperation::create(to->angle(), TransformOperation::Type::Rotate);
-        }
-        return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
-    }
-
-    auto blendedOperation = to->blend(from, context);
-    if (auto* rotate = dynamicDowncast<RotateTransformOperation>(blendedOperation.get()))
-        return RotateTransformOperation::create(rotate->x(), rotate->y(), rotate->z(), rotate->angle(), rotate->type());
-    return nullptr;
-}
-
-inline RefPtr<TranslateTransformOperation> blendFunc(TranslateTransformOperation* from, TranslateTransformOperation* to, const Context& context)
-{
-    if (!from && !to)
-        return nullptr;
-
-    RefPtr<TranslateTransformOperation> identity;
-    if (!from) {
-        identity = TranslateTransformOperation::create(WebCore::Length(0, LengthType::Fixed), WebCore::Length(0, LengthType::Fixed), WebCore::Length(0, LengthType::Fixed), to->type());
-        from = identity.get();
-    } else if (!to) {
-        identity = TranslateTransformOperation::create(WebCore::Length(0, LengthType::Fixed), WebCore::Length(0, LengthType::Fixed), WebCore::Length(0, LengthType::Fixed), from->type());
-        to = identity.get();
-    }
-
-    // Ensure the two transforms have the same type.
-    if (!from->isSameType(*to)) {
-        RefPtr<TranslateTransformOperation> normalizedFrom;
-        RefPtr<TranslateTransformOperation> normalizedTo;
-        if (from->is3DOperation() || to->is3DOperation()) {
-            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), from->z(), TransformOperation::Type::Translate3D);
-            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), to->z(), TransformOperation::Type::Translate3D);
-        } else {
-            normalizedFrom = TranslateTransformOperation::create(from->x(), from->y(), TransformOperation::Type::Translate);
-            normalizedTo = TranslateTransformOperation::create(to->x(), to->y(), TransformOperation::Type::Translate);
-        }
-        return blendFunc(normalizedFrom.get(), normalizedTo.get(), context);
-    }
-
-    auto blendedOperation = to->blend(from, context);
-    if (auto* translate = dynamicDowncast<TranslateTransformOperation>(blendedOperation.get()))
-        return TranslateTransformOperation::create(translate->x(), translate->y(), translate->z(), translate->type());
-    return nullptr;
-}
-
 inline Ref<TransformOperation> blendFunc(TransformOperation& from, TransformOperation& to, const Context& context)
 {
     return to.blend(&from, context);
-}
-
-inline RefPtr<PathOperation> blendFunc(PathOperation* from, PathOperation* to, const Context& context)
-{
-    if (context.isDiscrete) {
-        ASSERT(!context.progress || context.progress == 1);
-        return context.progress ? to : from;
-    }
-
-    ASSERT(from);
-    ASSERT(to);
-    return from->blend(to, context);
 }
 
 inline RefPtr<ShapeValue> blendFunc(ShapeValue* from, ShapeValue* to, const Context& context)
@@ -387,7 +216,7 @@ inline Visibility blendFunc(Visibility from, Visibility to, const Context& conte
     if (fromVal == toVal)
         return to;
     // The composite operation here is irrelevant.
-    double result = blendFunc(fromVal, toVal, { context.property, context.progress, false, CompositeOperation::Replace, IterationCompositeOperation::Replace, 0, context.client });
+    double result = blendFunc(fromVal, toVal, { context.property, context.progress, false, CompositeOperation::Replace, IterationCompositeOperation::Replace, 0, { }, { }, context.client });
     return result > 0. ? Visibility::Visible : (to != Visibility::Visible ? to : from);
 }
 
@@ -417,17 +246,13 @@ inline LengthBox blendFunc(const LengthBox& from, const LengthBox& to, const Con
     };
 }
 
-inline SVGLengthValue blendFunc(const SVGLengthValue& from, const SVGLengthValue& to, const Context& context)
-{
-    return SVGLengthValue::blend(from, to, narrowPrecisionToFloat(context.progress));
-}
-
-inline Vector<SVGLengthValue> blendFunc(const Vector<SVGLengthValue>& from, const Vector<SVGLengthValue>& to, const Context& context)
+inline FixedVector<WebCore::Length> blendFunc(const FixedVector<WebCore::Length>& from, const FixedVector<WebCore::Length>& to, const Context& context)
 {
     size_t fromLength = from.size();
     size_t toLength = to.size();
     if (!fromLength || !toLength)
         return context.progress < 0.5 ? from : to;
+
     size_t resultLength = fromLength;
     if (fromLength != toLength) {
         if (!remainder(std::max(fromLength, toLength), std::min(fromLength, toLength)))
@@ -435,10 +260,9 @@ inline Vector<SVGLengthValue> blendFunc(const Vector<SVGLengthValue>& from, cons
         else
             resultLength = fromLength * toLength;
     }
-    Vector<SVGLengthValue> result(resultLength);
-    for (size_t i = 0; i < resultLength; ++i)
-        result[i] = SVGLengthValue::blend(from[i % fromLength], to[i % toLength], narrowPrecisionToFloat(context.progress));
-    return result;
+    return FixedVector<WebCore::Length>::createWithSizeFromGenerator(resultLength, [&](auto i) {
+        return blendFunc(from[i % fromLength], to[i % toLength], context);
+    });
 }
 
 inline RefPtr<StyleImage> crossfadeBlend(StyleCachedImage& fromStyleImage, StyleCachedImage& toStyleImage, const Context& context)
@@ -567,142 +391,6 @@ inline std::optional<FontSelectionValue> blendFunc(std::optional<FontSelectionVa
     };
 
     return normalizedFontItalicValue(blendFunc(valueOrDefault(from), valueOrDefault(to), context));
-}
-
-inline bool canInterpolate(const GridTrackList& from, const GridTrackList& to)
-{
-    if (from.list.size() != to.list.size())
-        return false;
-
-    size_t i = 0;
-    auto visitor = WTF::makeVisitor(
-        [&](const GridTrackSize&) {
-            return std::holds_alternative<GridTrackSize>(to.list[i]);
-        },
-        [&](const Vector<String>&) {
-            return std::holds_alternative<Vector<String>>(to.list[i]);
-        },
-        [&](const GridTrackEntryRepeat& repeat) {
-            if (!std::holds_alternative<GridTrackEntryRepeat>(to.list[i]))
-                return false;
-            auto& toEntry = std::get<GridTrackEntryRepeat>(to.list[i]);
-            return repeat.repeats == toEntry.repeats && repeat.list.size() == toEntry.list.size();
-        },
-        [](const GridTrackEntryAutoRepeat&) {
-            return false;
-        },
-        [](const GridTrackEntrySubgrid&) {
-            return false;
-        },
-        [](const GridTrackEntryMasonry&) {
-            return false;
-        }
-    );
-
-    for (i = 0; i < from.list.size(); i++) {
-        if (!std::visit(visitor, from.list[i]))
-            return false;
-    }
-
-    return true;
-}
-
-inline GridLength blendFunc(const GridLength& from, const GridLength& to, const Context& context)
-{
-    if (from.isFlex() != to.isFlex())
-        return context.progress < 0.5 ? from : to;
-
-    if (from.isFlex())
-        return GridLength(blend(from.flex(), to.flex(), context));
-
-    return GridLength(blendFunc(from.length(), to.length(), context));
-}
-
-inline GridTrackSize blendFunc(const GridTrackSize& from, const GridTrackSize& to, const Context& context)
-{
-    if (from.type() != to.type())
-        return context.progress < 0.5 ? from : to;
-
-    if (from.type() == LengthTrackSizing) {
-        auto length = blendFunc(from.minTrackBreadth(), to.minTrackBreadth(), context);
-        return GridTrackSize(length, LengthTrackSizing);
-    }
-    if (from.type() == MinMaxTrackSizing) {
-        auto minTrackBreadth = blendFunc(from.minTrackBreadth(), to.minTrackBreadth(), context);
-        auto maxTrackBreadth = blendFunc(from.maxTrackBreadth(), to.maxTrackBreadth(), context);
-        return GridTrackSize(minTrackBreadth, maxTrackBreadth);
-    }
-
-    auto fitContentBreadth = blendFunc(from.fitContentTrackBreadth(), to.fitContentTrackBreadth(), context);
-    return GridTrackSize(fitContentBreadth, FitContentTrackSizing);
-}
-
-inline RepeatTrackList blendFunc(const RepeatTrackList& from, const RepeatTrackList& to, const Context& context)
-{
-    RepeatTrackList result;
-    size_t i = 0;
-
-    auto visitor = WTF::makeVisitor(
-        [&](const GridTrackSize& size) {
-            result.append(blendFunc(size, std::get<GridTrackSize>(to[i]), context));
-        },
-        [&](const Vector<String>& names) {
-            if (context.progress < 0.5)
-                result.append(names);
-            else
-                result.append(std::get<Vector<String>>(to[i]));
-        }
-    );
-
-    for (i = 0; i < from.size(); i++)
-        std::visit(visitor, from[i]);
-
-    return result;
-}
-
-inline GridTrackList blendFunc(const GridTrackList& from, const GridTrackList& to, const Context& context)
-{
-    if (!canInterpolate(from, to))
-        return context.progress < 0.5 ? from : to;
-
-    GridTrackList result;
-    size_t i = 0;
-
-    auto visitor = WTF::makeVisitor(
-        [&](const GridTrackSize& size) {
-            result.list.append(blendFunc(size, std::get<GridTrackSize>(to.list[i]), context));
-        },
-        [&](const Vector<String>& names) {
-            if (context.progress < 0.5)
-                result.list.append(names);
-            else
-                result.list.append(std::get<Vector<String>>(to.list[i]));
-        },
-        [&](const GridTrackEntryRepeat& repeatFrom) {
-            auto& repeatTo = std::get<GridTrackEntryRepeat>(to.list[i]);
-            GridTrackEntryRepeat repeatResult;
-            repeatResult.repeats = repeatFrom.repeats;
-            repeatResult.list = blendFunc(repeatFrom.list, repeatTo.list, context);
-            result.list.append(WTFMove(repeatResult));
-        },
-        [&](const GridTrackEntryAutoRepeat& repeatFrom) {
-            auto& repeatTo = std::get<GridTrackEntryAutoRepeat>(to.list[i]);
-            GridTrackEntryAutoRepeat repeatResult;
-            repeatResult.type = repeatFrom.type;
-            repeatResult.list = blendFunc(repeatFrom.list, repeatTo.list, context);
-            result.list.append(WTFMove(repeatResult));
-        },
-        [](const GridTrackEntrySubgrid&) {
-        },
-        [](const GridTrackEntryMasonry&) {
-        }
-    );
-
-
-    for (i = 0; i < from.list.size(); i++)
-        std::visit(visitor, from.list[i]);
-
-    return result;
 }
 
 inline RefPtr<StylePathData> blendFunc(StylePathData* from, StylePathData* to, const Context& context)

@@ -852,7 +852,7 @@ void SpeculativeJIT::emitCall(Node* node)
     LinkableConstant callLinkInfoConstant;
     if (!isDirect) {
         std::tie(callLinkInfo, callLinkInfoConstant) = addCallLinkInfo(m_currentNode->origin.semantic);
-        std::visit([&](auto* callLinkInfo) {
+        WTF::visit([&](auto* callLinkInfo) {
             callLinkInfo->setUpCall(callType);
         }, callLinkInfo);
     }
@@ -884,10 +884,11 @@ void SpeculativeJIT::emitCall(Node* node)
         // Now we need to make room for:
         // - The caller frame and PC of a call to operationCallDirectEvalSloppy/operationCallDirectEvalStrict.
         // - Potentially two arguments on the stack.
+        CodeBlock* baselineCodeBlock = m_graph.baselineCodeBlockFor(staticOrigin);
         unsigned requiredBytes = sizeof(CallerFrameAndPC) + sizeof(CallFrame*) * 2;
         requiredBytes = WTF::roundUpToMultipleOf<stackAlignmentBytes()>(requiredBytes);
         subPtr(TrustedImm32(requiredBytes), stackPointerRegister);
-        setupArguments<decltype(operationCallDirectEvalSloppy)>(calleeFrameGPR, evalScopeGPR, evalThisValueJSR);
+        setupArguments<decltype(operationCallDirectEvalSloppy)>(calleeFrameGPR, evalScopeGPR, evalThisValueJSR, CCallHelpers::TrustedImmPtr(baselineCodeBlock), TrustedImm32(staticOrigin.bytecodeIndex().asBits()));
         prepareForExternalCall();
         appendCall(selectCallDirectEvalOperation(node->lexicallyScopedFeatures()));
         exceptionCheck();
@@ -991,7 +992,10 @@ GPRReg SpeculativeJIT::fillSpeculateInt32Internal(Edge edge, DataFormat& returnF
 
     m_interpreter.filter(value, SpecInt32Only);
     if (value.isClear()) {
-        terminateSpeculativeExecution(Uncountable, JSValueRegs(), 0);
+        if (!type)
+            terminateUnreachableNode();
+        else if (mayHaveTypeCheck(edge.useKind()))
+            terminateSpeculativeExecution(Uncountable, JSValueRegs(), nullptr);
         returnFormat = DataFormatInt32;
         return allocate();
     }
@@ -1120,7 +1124,10 @@ GPRReg SpeculativeJIT::fillSpeculateCell(Edge edge)
 
     m_interpreter.filter(value, SpecCell);
     if (value.isClear()) {
-        terminateSpeculativeExecution(Uncountable, JSValueRegs(), 0);
+        if (!type)
+            terminateUnreachableNode();
+        else if (mayHaveTypeCheck(edge.useKind()))
+            terminateSpeculativeExecution(Uncountable, JSValueRegs(), nullptr);
         return allocate();
     }
 
@@ -1200,7 +1207,10 @@ GPRReg SpeculativeJIT::fillSpeculateBoolean(Edge edge)
 
     m_interpreter.filter(value, SpecBoolean);
     if (value.isClear()) {
-        terminateSpeculativeExecution(Uncountable, JSValueRegs(), 0);
+        if (!type)
+            terminateUnreachableNode();
+        else if (mayHaveTypeCheck(edge.useKind()))
+            terminateSpeculativeExecution(Uncountable, JSValueRegs(), nullptr);
         return allocate();
     }
 
@@ -2358,9 +2368,13 @@ void SpeculativeJIT::compile(Node* node)
         compileValueBitRShift(node);
         break;
 
+    case ValueBitURShift:
+        compileValueBitURShift(node);
+        break;
+
     case ArithBitRShift:
     case ArithBitLShift:
-    case BitURShift:
+    case ArithBitURShift:
         compileShiftOp(node);
         break;
 
@@ -2572,6 +2586,11 @@ void SpeculativeJIT::compile(Node* node)
         break;
     }
 
+    case StringCodePointAt: {
+        compileStringCodePointAt(node);
+        break;
+    }
+
     case StringAt:
     case StringCharAt: {
         // Relies on StringCharAt and StringAt node having same basic layout as GetByVal
@@ -2763,6 +2782,11 @@ void SpeculativeJIT::compile(Node* node)
         break;
     }
 
+    case RegExpSearch: {
+        compileRegExpSearch(node);
+        break;
+    }
+
     case StringReplace:
     case StringReplaceAll:
     case StringReplaceRegExp: {
@@ -2883,39 +2907,28 @@ void SpeculativeJIT::compile(Node* node)
             GPRReg storageLengthGPR = storageLength.gpr();
 
             load32(Address(storageGPR, ArrayStorage::lengthOffset()), storageLengthGPR);
-        
-            JumpList setUndefinedCases;
-            setUndefinedCases.append(branchTest32(Zero, storageLengthGPR));
-        
+
+            JumpList slowCases;
+            slowCases.append(branchTest32(Zero, storageLengthGPR));
+
             sub32(TrustedImm32(1), storageLengthGPR);
-        
-            Jump slowCase = branch32(AboveOrEqual, storageLengthGPR, Address(storageGPR, ArrayStorage::vectorLengthOffset()));
+
+            slowCases.append(branch32(AboveOrEqual, storageLengthGPR, Address(storageGPR, ArrayStorage::vectorLengthOffset())));
 
             loadValue(BaseIndex(storageGPR, storageLengthGPR, TimesEight, ArrayStorage::vectorOffset()), JSValueRegs { valueTagGPR, valuePayloadGPR });
-        
+            slowCases.append(branchIfEmpty(valueTagGPR));
+
             store32(storageLengthGPR, Address(storageGPR, ArrayStorage::lengthOffset()));
 
-            setUndefinedCases.append(branchIfEmpty(valueTagGPR));
-        
             store32(TrustedImm32(JSValue::EmptyValueTag), BaseIndex(storageGPR, storageLengthGPR, TimesEight, ArrayStorage::vectorOffset() + OBJECT_OFFSETOF(JSValue, u.asBits.tag)));
-
             sub32(TrustedImm32(1), Address(storageGPR, OBJECT_OFFSETOF(ArrayStorage, m_numValuesInVector)));
-        
-            addSlowPathGenerator(
-                slowPathMove(
-                    setUndefinedCases, this,
-                    TrustedImm32(jsUndefined().tag()), valueTagGPR,
-                    TrustedImm32(jsUndefined().payload()), valuePayloadGPR));
-        
-            addSlowPathGenerator(
-                slowPathCall(
-                    slowCase, this, operationArrayPop,
-                    JSValueRegs(valueTagGPR, valuePayloadGPR), LinkableConstant::globalObject(*this, node), baseGPR));
+
+            addSlowPathGenerator(slowPathCall(slowCases, this, operationArrayPop, JSValueRegs(valueTagGPR, valuePayloadGPR), LinkableConstant::globalObject(*this, node), baseGPR));
 
             jsValueResult(valueTagGPR, valuePayloadGPR, node);
             break;
         }
-            
+
         default:
             CRASH();
             break;
@@ -3317,7 +3330,8 @@ void SpeculativeJIT::compile(Node* node)
         break;
         
     case GetScope:
-        compileGetScope(node);
+    case GetEvalScope:
+        compileGetScopeOrGetEvalScope(node);
         break;
             
     case SkipScope:
@@ -3806,6 +3820,21 @@ void SpeculativeJIT::compile(Node* node)
         break;
     }
 
+    case GlobalIsFinite: {
+        compileGlobalIsFinite(node);
+        break;
+    }
+
+    case NumberIsFinite: {
+        compileNumberIsFinite(node);
+        break;
+    }
+
+    case NumberIsSafeInteger: {
+        compileNumberIsSafeInteger(node);
+        break;
+    }
+
     case IsObject: {
         compileIsObject(node);
         break;
@@ -4234,7 +4263,7 @@ void SpeculativeJIT::compile(Node* node)
     }
 
     case ForceOSRExit: {
-        terminateSpeculativeExecution(InadequateCoverage, JSValueRegs(), 0);
+        terminateSpeculativeExecution(InadequateCoverage, JSValueRegs(), nullptr);
         break;
     }
 
@@ -4413,7 +4442,6 @@ void SpeculativeJIT::compile(Node* node)
     case DateGetInt32OrNaN:
     case DateGetTime:
     case DateSetTime:
-    case StringCodePointAt:
     case CallWasm:
     case FunctionBind:
     case NewBoundFunction:
@@ -4426,6 +4454,8 @@ void SpeculativeJIT::compile(Node* node)
     case PutByValMegamorphic:
     case InByIdMegamorphic:
     case InByValMegamorphic:
+    case MultiGetByVal:
+    case MultiPutByVal:
         DFG_CRASH(m_graph, node, "unexpected node in DFG backend");
         break;
     }
@@ -4800,7 +4830,7 @@ void SpeculativeJIT::compileHasPrivate(Node* node, AccessType type)
         codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, type, usedRegisters,
         JSValueRegs::payloadOnly(baseGPR), JSValueRegs::payloadOnly(propertyOrBrandGPR), resultRegs, InvalidGPRReg, InvalidGPRReg);
 
-    std::visit([&](auto* stubInfo) {
+    WTF::visit([&](auto* stubInfo) {
         stubInfo->propertyIsSymbol = true;
     }, stubInfo);
 
@@ -4903,7 +4933,7 @@ void SpeculativeJIT::compilePutByVal(Node* node)
             codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, isDirect ? (ecmaMode.isStrict() ? AccessType::PutByValDirectStrict : AccessType::PutByValDirectSloppy) : (ecmaMode.isStrict() ? AccessType::PutByValStrict : AccessType::PutByValSloppy), usedRegisters,
             baseRegs, propertyRegs, valueRegs, InvalidGPRReg, InvalidGPRReg);
 
-        std::visit([&](auto* stubInfo) {
+        WTF::visit([&](auto* stubInfo) {
             if (m_state.forNode(child2).isType(SpecString))
                 stubInfo->propertyIsString = true;
             else if (m_state.forNode(child2).isType(SpecInt32Only))
@@ -4929,7 +4959,7 @@ void SpeculativeJIT::compilePutByVal(Node* node)
     }
     case Array::Int32: {
         speculateInt32(child3);
-        FALLTHROUGH;
+        [[fallthrough]];
     }
     case Array::Contiguous: {
         compileContiguousPutByVal(node);
@@ -5058,7 +5088,7 @@ void SpeculativeJIT::compileGetPrivateNameByVal(Node* node, JSValueRegs baseRegs
         codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, AccessType::GetPrivateName, usedRegisters,
         baseRegs, propertyRegs, resultRegs, InvalidGPRReg, InvalidGPRReg);
 
-    std::visit([&](auto* stubInfo) {
+    WTF::visit([&](auto* stubInfo) {
         stubInfo->propertyIsSymbol = true;
     }, stubInfo);
 
@@ -5162,7 +5192,7 @@ void SpeculativeJIT::compilePutPrivateName(Node* node)
         codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, node->privateFieldPutKind().isDefine() ? AccessType::DefinePrivateNameByVal : AccessType::SetPrivateNameByVal, usedRegisters,
         JSValueRegs::payloadOnly(baseGPR), JSValueRegs::payloadOnly(propertyGPR), valueRegs, InvalidGPRReg, InvalidGPRReg);
 
-    std::visit([&](auto* stubInfo) {
+    WTF::visit([&](auto* stubInfo) {
         stubInfo->propertyIsSymbol = true;
     }, stubInfo);
 
@@ -5221,7 +5251,7 @@ void SpeculativeJIT::compileCheckPrivateBrand(Node* node)
         codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, AccessType::CheckPrivateBrand, usedRegisters,
         baseRegs, JSValueRegs::payloadOnly(brandGPR), InvalidGPRReg);
 
-    std::visit([&](auto* stubInfo) {
+    WTF::visit([&](auto* stubInfo) {
         stubInfo->propertyIsSymbol = true;
     }, stubInfo);
 
@@ -5258,7 +5288,7 @@ void SpeculativeJIT::compileSetPrivateBrand(Node* node)
         codeBlock(), stubInfo, JITType::DFGJIT, codeOrigin, callSite, AccessType::SetPrivateBrand, usedRegisters,
         JSValueRegs::payloadOnly(baseGPR), JSValueRegs::payloadOnly(brandGPR), InvalidGPRReg);
 
-    std::visit([&](auto* stubInfo) {
+    WTF::visit([&](auto* stubInfo) {
         stubInfo->propertyIsSymbol = true;
     }, stubInfo);
 

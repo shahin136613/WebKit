@@ -32,6 +32,7 @@
 #include <wtf/MappedFileData.h>
 #include <wtf/SHA1.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA)
@@ -43,7 +44,6 @@
 #endif
 
 #if USE(CURL)
-#include <variant>
 #include <wtf/Box.h>
 #endif
 
@@ -59,6 +59,7 @@ class Data {
 public:
     Data() { }
     Data(std::span<const uint8_t>);
+    Data(Vector<uint8_t>&& data);
 
     ~Data() { }
 
@@ -72,13 +73,12 @@ public:
 #if USE(GLIB)
     Data(GRefPtr<GBytes>&&, FileSystem::FileHandle&& = { });
 #elif USE(CURL)
-    Data(std::variant<Vector<uint8_t>, FileSystem::MappedFileData>&&);
-    Data(Vector<uint8_t>&& data) : Data(std::variant<Vector<uint8_t>, FileSystem::MappedFileData> { WTFMove(data) }) { }
+    Data(Variant<Vector<uint8_t>, FileSystem::MappedFileData>&&);
 #endif
     bool isNull() const;
     bool isEmpty() const { return !size(); }
 
-    std::span<const uint8_t> span() const;
+    std::span<const uint8_t> span() const LIFETIME_BOUND;
     size_t size() const;
     bool isMap() const { return m_isMap; }
     RefPtr<WebCore::SharedMemory> tryCreateSharedMemory() const;
@@ -106,7 +106,7 @@ private:
     Box<FileSystem::FileHandle> m_fileHandle;
 #endif
 #if USE(CURL)
-    Box<std::variant<Vector<uint8_t>, FileSystem::MappedFileData>> m_buffer;
+    Box<Variant<Vector<uint8_t>, FileSystem::MappedFileData>> m_buffer;
 #endif
     bool m_isMap { false };
 };

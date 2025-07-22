@@ -28,7 +28,6 @@
 #include "GlyphMetricsMap.h"
 #include "GlyphPage.h"
 #include "RenderingResourceIdentifier.h"
-#include <variant>
 #include <wtf/BitVector.h>
 #include <wtf/Hasher.h>
 #include <wtf/WeakPtr.h>
@@ -94,7 +93,7 @@ struct FontInternalAttributes {
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(Font);
 class Font : public RefCounted<Font>, public CanMakeSingleThreadWeakPtr<Font> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Font);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Font, Font);
 public:
     using Origin = FontOrigin;
     using IsInterstitial = FontIsInterstitial;
@@ -325,7 +324,7 @@ private:
 
     const FontPlatformData m_platformData;
 
-    mutable UncheckedKeyHashMap<unsigned, RefPtr<GlyphPage>, IntHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_glyphPages;
+    mutable HashMap<unsigned, RefPtr<GlyphPage>, IntHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_glyphPages;
     mutable GlyphMetricsMap<float> m_glyphToWidthMap;
     mutable std::unique_ptr<GlyphMetricsMap<FloatRect>> m_glyphToBoundsMap;
     // FIXME: Find a more efficient way to represent std::optional<Path>.
@@ -342,7 +341,7 @@ private:
     Attributes m_attributes;
 
     struct DerivedFonts {
-        WTF_MAKE_STRUCT_FAST_ALLOCATED;
+        WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(DerivedFonts);
     public:
 
         RefPtr<Font> smallCapsFont;
@@ -358,11 +357,17 @@ private:
     mutable std::unique_ptr<DerivedFonts> m_derivedFontData;
 
     struct NoEmojiGlyphs { };
+#if USE(SKIA)
     struct AllEmojiGlyphs { };
+#endif
     struct SomeEmojiGlyphs {
         BitVector colorGlyphs;
     };
-    using EmojiType = std::variant<NoEmojiGlyphs, AllEmojiGlyphs, SomeEmojiGlyphs>;
+#if USE(SKIA)
+    using EmojiType = Variant<NoEmojiGlyphs, AllEmojiGlyphs, SomeEmojiGlyphs>;
+#else
+    using EmojiType = Variant<NoEmojiGlyphs, SomeEmojiGlyphs>;
+#endif
     EmojiType m_emojiType { NoEmojiGlyphs { } };
 
 #if PLATFORM(COCOA)
@@ -436,10 +441,10 @@ ALWAYS_INLINE FloatRect Font::boundsForGlyph(Glyph glyph) const
 ALWAYS_INLINE Vector<FloatRect, Font::inlineGlyphRunCapacity> Font::boundsForGlyphs(std::span<const Glyph> glyphs) const
 {
     const auto glyphCount = glyphs.size();
-    if (UNLIKELY(!glyphCount))
+    if (!glyphCount) [[unlikely]]
         return { };
 
-    if (UNLIKELY(glyphCount == 1))
+    if (glyphCount == 1) [[unlikely]]
         return { boundsForGlyph(glyphs[0]) };
 
     Vector<Glyph, inlineGlyphRunCapacity> glyphsNeedingMeasurement;
@@ -510,6 +515,7 @@ ALWAYS_INLINE float Font::widthForGlyph(Glyph glyph, SyntheticBoldInclusion Synt
 
 #if !LOG_DISABLED
 WEBCORE_EXPORT TextStream& operator<<(TextStream&, const Font&);
+TextStream& operator<<(TextStream&, const GlyphBuffer&);
 #endif
 
 } // namespace WebCore

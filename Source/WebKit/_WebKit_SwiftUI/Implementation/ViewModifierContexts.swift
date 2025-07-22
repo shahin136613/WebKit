@@ -25,20 +25,14 @@ internal import SwiftUI
 @_spi(Private) internal import WebKit
 
 struct ContextMenuContext {
-#if os(macOS)
-    let menu: (WebPage.ElementInfo) -> NSMenu
-#endif
+    #if os(macOS)
+    let menu: @MainActor (WebView.ActivatedElementInfo) -> NSMenu
+    #endif
 }
 
 struct OnScrollGeometryChangeContext {
     let transform: (ScrollGeometry) -> AnyHashable
     let action: (AnyHashable, AnyHashable) -> Void
-}
-
-struct FindContext {
-    var isPresented: Binding<Bool>?
-    var canFind = true
-    var canReplace = true
 }
 
 struct ScrollPositionContext {

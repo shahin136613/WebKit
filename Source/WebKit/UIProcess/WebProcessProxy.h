@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -197,7 +197,7 @@ public:
     inline Ref<WebProcessPool> protectedProcessPool() const; // This function is implemented in WebProcessPool.h.
 
     std::optional<SharedPreferencesForWebProcess> sharedPreferencesForWebProcess() const { return m_sharedPreferencesForWebProcess; }
-    SharedPreferencesForWebProcess sharedPreferencesForWebProcessValue() const { return m_sharedPreferencesForWebProcess; }
+    const SharedPreferencesForWebProcess& sharedPreferencesForWebProcessValue() const { return m_sharedPreferencesForWebProcess; }
     std::optional<SharedPreferencesForWebProcess> updateSharedPreferences(const WebPreferencesStore&);
     void didSyncSharedPreferencesForWebProcessWithNetworkProcess(uint64_t syncedPreferencesVersion);
 #if ENABLE(GPU_PROCESS)
@@ -227,11 +227,11 @@ public:
     static void setProcessCountLimit(unsigned);
 
     static RefPtr<WebProcessProxy> processForIdentifier(WebCore::ProcessIdentifier);
-    static RefPtr<WebProcessProxy> processForConnection(const IPC::Connection&);
+    static Ref<WebProcessProxy> fromConnection(const IPC::Connection&);
     static RefPtr<WebPageProxy> webPage(WebPageProxyIdentifier);
     static RefPtr<WebPageProxy> webPage(WebCore::PageIdentifier);
     static RefPtr<WebPageProxy> audioCapturingWebPage();
-#if ENABLE(WEBXR) && !USE(OPENXR)
+#if ENABLE(WEBXR)
     static RefPtr<WebPageProxy> webPageWithActiveXRSession();
 #endif
     Ref<WebPageProxy> createWebPage(PageClient&, Ref<API::PageConfiguration>&&);
@@ -346,7 +346,7 @@ public:
     void didExceedCPULimit();
     void didExceedActiveMemoryLimit();
     void didExceedInactiveMemoryLimit();
-    void didExceedMemoryFootprintThreshold(size_t);
+    void didExceedMemoryFootprintThreshold(uint64_t);
 
     void didCommitProvisionalLoad() { m_hasCommittedAnyProvisionalLoads = true; }
     bool hasCommittedAnyProvisionalLoads() const { return m_hasCommittedAnyProvisionalLoads; }
@@ -361,6 +361,9 @@ public:
 
     bool isPrewarmed() const { return m_isPrewarmed; }
     void markIsNoLongerInPrewarmedPool();
+
+    bool isForeground() const { return !!m_foregroundToken; }
+    bool isBackground() const { return !!m_backgroundToken; }
 
 #if PLATFORM(COCOA)
     Vector<String> mediaMIMETypes() const;
@@ -443,11 +446,6 @@ public:
     void endServiceWorkerBackgroundProcessing();
     void setThrottleStateForTesting(ProcessThrottleState);
 
-#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
-    UserMediaCaptureManagerProxy& userMediaCaptureManagerProxy() { return m_userMediaCaptureManagerProxy.get(); }
-    Ref<UserMediaCaptureManagerProxy> protectedUserMediaCaptureManagerProxy();
-#endif
-
 #if ENABLE(GPU_PROCESS)
     void gpuProcessDidFinishLaunching();
     void gpuProcessExited(ProcessTerminationReason);
@@ -456,6 +454,10 @@ public:
 #if ENABLE(MODEL_PROCESS)
     void modelProcessDidFinishLaunching();
     void modelProcessExited(ProcessTerminationReason);
+#if HAVE(TASK_IDENTITY_TOKEN)
+    void createMemoryAttributionIDIfNeeded(CompletionHandler<void(const std::optional<String>&)>&&);
+    void unregisterMemoryAttributionIDIfNeeded();
+#endif
 #endif
 
 #if PLATFORM(COCOA)
@@ -502,8 +504,7 @@ public:
     void serializeAndWrapCryptoKey(WebCore::CryptoKeyData&&, CompletionHandler<void(std::optional<Vector<uint8_t>>&&)>&&);
     void unwrapCryptoKey(WebCore::WrappedCryptoKey&&, CompletionHandler<void(std::optional<Vector<uint8_t>>&&)>&&);
 
-    void setAppBadge(std::optional<WebPageProxyIdentifier>, const WebCore::SecurityOriginData&, std::optional<uint64_t> badge);
-    void setClientBadge(WebPageProxyIdentifier, const WebCore::SecurityOriginData&, std::optional<uint64_t> badge);
+    void setAppBadgeFromWorker(const WebCore::SecurityOriginData&, std::optional<uint64_t> badge);
 
     WebCore::CrossOriginMode crossOriginMode() const { return m_crossOriginMode; }
     LockdownMode lockdownMode() const { return m_lockdownMode; }
@@ -549,7 +550,7 @@ public:
 #endif
 
 #if ENABLE(CONTENT_EXTENSIONS)
-    void requestResourceMonitorRuleLists();
+    void requestResourceMonitorRuleLists(bool forTesting);
     void setResourceMonitorRuleListsIfRequired(RefPtr<WebCompiledContentRuleList>);
     void setResourceMonitorRuleLists(RefPtr<WebCompiledContentRuleList>, CompletionHandler<void()>&&);
 #endif
@@ -675,7 +676,11 @@ private:
     void sharedPreferencesDidChange();
 
 #if ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+#if ENABLE(STREAMING_IPC_IN_LOG_FORWARDING)
     void setupLogStream(uint32_t pid, IPC::StreamServerConnectionHandle&&, LogStreamIdentifier, CompletionHandler<void(IPC::Semaphore& streamWakeUpSemaphore, IPC::Semaphore& streamClientWaitSemaphore)>&&);
+#else
+    void setupLogStream(uint32_t pid, LogStreamIdentifier, CompletionHandler<void()>&&);
+#endif
 #endif
 
 #if ENABLE(REMOTE_INSPECTOR) && PLATFORM(COCOA)
@@ -760,10 +765,6 @@ private:
 
     SystemMemoryPressureStatus m_memoryPressureStatus { SystemMemoryPressureStatus::Normal };
 
-#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
-    const Ref<UserMediaCaptureManagerProxy> m_userMediaCaptureManagerProxy;
-#endif
-
     bool m_hasCommittedAnyProvisionalLoads { false };
     bool m_hasCommittedAnyMeaningfulProvisionalLoads { false }; // True if the process has committed a provisional load to a URL that was not about:*.
     bool m_isPrewarmed;
@@ -813,12 +814,12 @@ private:
     using SpeechRecognitionServerMap = HashMap<SpeechRecognitionServerIdentifier, Ref<SpeechRecognitionServer>>;
     SpeechRecognitionServerMap m_speechRecognitionServerMap;
 #if ENABLE(MEDIA_STREAM)
-    std::unique_ptr<SpeechRecognitionRemoteRealtimeMediaSourceManager> m_speechRecognitionRemoteRealtimeMediaSourceManager;
+    const std::unique_ptr<SpeechRecognitionRemoteRealtimeMediaSourceManager> m_speechRecognitionRemoteRealtimeMediaSourceManager;
 #endif
-    std::unique_ptr<WebLockRegistryProxy> m_webLockRegistry;
-    UniqueRef<WebPermissionControllerProxy> m_webPermissionController;
+    const std::unique_ptr<WebLockRegistryProxy> m_webLockRegistry;
+    const UniqueRef<WebPermissionControllerProxy> m_webPermissionController;
 #if ENABLE(ROUTING_ARBITRATION)
-    std::unique_ptr<AudioSessionRoutingArbitratorProxy> m_routingArbitrator;
+    const std::unique_ptr<AudioSessionRoutingArbitratorProxy> m_routingArbitrator;
 #endif
     bool m_isConnectedToHardwareConsole { true };
 #if PLATFORM(MAC)
@@ -832,6 +833,7 @@ private:
 #endif
 #if ENABLE(MODEL_PROCESS)
     uint64_t m_sharedPreferencesVersionInModelProcess { 0 };
+    std::optional<String> m_memoryAttributionID;
 #endif
     uint64_t m_awaitedSharedPreferencesVersion { 0 };
     CompletionHandler<void(bool success)> m_sharedPreferencesForWebProcessCompletionHandler;
@@ -849,7 +851,11 @@ private:
     bool m_hasRegisteredServiceWorkerClients { true };
 
 #if ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+#if ENABLE(STREAMING_IPC_IN_LOG_FORWARDING)
     IPC::ScopedActiveMessageReceiveQueue<LogStream> m_logStream;
+#else
+    RefPtr<LogStream> m_logStream;
+#endif
 #endif
 
 #if ENABLE(CONTENT_EXTENSIONS)

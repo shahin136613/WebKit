@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -64,7 +64,7 @@ static uint64_t generateAddRequestIdentifier()
 }
 
 WebProcessCache::WebProcessCache(WebProcessPool& processPool)
-    : m_evictionTimer(RunLoop::main(), this, &WebProcessCache::clear)
+    : m_evictionTimer(RunLoop::mainSingleton(), this, &WebProcessCache::clear)
 {
     updateCapacity(processPool);
     platformInitialize();
@@ -119,7 +119,7 @@ bool WebProcessCache::addProcessIfPossible(Ref<WebProcessProxy>&& process)
     m_pendingAddRequests.add(requestIdentifier, CachedProcess::create(process.copyRef()));
 
     WEBPROCESSCACHE_RELEASE_LOG("addProcessIfPossible: Checking if process is responsive before caching it", process->processID());
-    process->isResponsive([this, processPool = WTFMove(protectedProcessPool), process, requestIdentifier](bool isResponsive) {
+    process->isResponsive([this, checkedThis = CheckedPtr { this }, processPool = WTFMove(protectedProcessPool), process, requestIdentifier](bool isResponsive) {
         auto cachedProcess = m_pendingAddRequests.take(requestIdentifier);
         if (!cachedProcess)
             return;
@@ -311,9 +311,9 @@ Ref<WebProcessCache::CachedProcess> WebProcessCache::CachedProcess::create(Ref<W
 
 WebProcessCache::CachedProcess::CachedProcess(Ref<WebProcessProxy>&& process)
     : m_process(WTFMove(process))
-    , m_evictionTimer(RunLoop::main(), this, &CachedProcess::evictionTimerFired)
+    , m_evictionTimer(RunLoop::mainSingleton(), this, &CachedProcess::evictionTimerFired)
 #if PLATFORM(MAC) || PLATFORM(GTK) || PLATFORM(WPE)
-    , m_suspensionTimer(RunLoop::main(), this, &CachedProcess::suspensionTimerFired)
+    , m_suspensionTimer(RunLoop::mainSingleton(), this, &CachedProcess::suspensionTimerFired)
 #endif
 {
     RELEASE_ASSERT(!m_process->pageCount());
@@ -369,7 +369,7 @@ void WebProcessCache::CachedProcess::evictionTimerFired()
 {
     ASSERT(m_process);
     auto process = m_process.copyRef();
-    process->protectedProcessPool()->checkedWebProcessCache()->removeProcess(*process, ShouldShutDownProcess::Yes);
+    process->protectedProcessPool()->webProcessCache().removeProcess(*process, ShouldShutDownProcess::Yes);
 }
 
 #if PLATFORM(MAC) || PLATFORM(GTK) || PLATFORM(WPE)

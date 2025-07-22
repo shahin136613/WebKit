@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 1999 Antti Koivisto (koivisto@kde.org)
- * Copyright (C) 2004, 2005, 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2025 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -40,6 +40,7 @@
 #include "StyleResolver.h"
 #include "TransformOperations.h"
 #include "TranslateTransformOperation.h"
+#include <wtf/CryptographicallyRandomNumber.h>
 #include <wtf/ZippedRange.h>
 
 namespace WebCore {
@@ -70,6 +71,18 @@ bool BlendingKeyframes::operator==(const BlendingKeyframes& o) const
     }
 
     return true;
+}
+
+const String& BlendingKeyframes::acceleratedAnimationName() const
+{
+    if (m_acceleratedAnimationName.isEmpty()) {
+        m_acceleratedAnimationName = switchOn(m_identifier, [](const AtomString& name) {
+            return name.string();
+        }, [](uint64_t numericID) {
+            return makeString("keyframe-effect-"_s, numericID);
+        });
+    }
+    return m_acceleratedAnimationName;
 }
 
 void BlendingKeyframes::insert(BlendingKeyframe&& keyframe)
@@ -144,17 +157,17 @@ void BlendingKeyframes::fillImplicitKeyframes(const KeyframeEffect& effect, cons
         return;
 
     ASSERT(effect.target());
-    auto& element = *effect.target();
-    if (!element.isConnected())
+    Ref element = *effect.target();
+    if (!element->isConnected())
         return;
 
-    auto& styleResolver = element.styleResolver();
+    Ref styleResolver = element->styleResolver();
 
     // We need to establish which properties are implicit for 0% and 100%.
     // We start each list off with the full list of properties, and see if
     // any 0% and 100% keyframes specify them.
-    UncheckedKeyHashSet<AnimatableCSSProperty> expectedExplicitProperties;
-    UncheckedKeyHashSet<AnimatableCSSProperty> zeroKeyframeExplicitProperties;
+    HashSet<AnimatableCSSProperty> expectedExplicitProperties;
+    HashSet<AnimatableCSSProperty> zeroKeyframeExplicitProperties;
 
     BlendingKeyframe* implicitZeroKeyframe = nullptr;
 
@@ -162,15 +175,15 @@ void BlendingKeyframes::fillImplicitKeyframes(const KeyframeEffect& effect, cons
         if (keyframe.usesRangeOffset())
             return false;
 
-        auto* timingFunction = keyframe.timingFunction();
+        RefPtr timingFunction = keyframe.timingFunction();
 
         // If there is no timing function set on the keyframe, then it uses the element's
         // timing function, which makes this keyframe suitable.
         if (!timingFunction)
             return true;
 
-        if (auto* cssAnimation = dynamicDowncast<CSSAnimation>(effect.animation())) {
-            auto* animationWideTimingFunction = cssAnimation->backingAnimation().defaultTimingFunctionForKeyframes();
+        if (RefPtr cssAnimation = dynamicDowncast<CSSAnimation>(effect.animation())) {
+            RefPtr animationWideTimingFunction = cssAnimation->backingAnimation().defaultTimingFunctionForKeyframes();
             // If we're dealing with a CSS Animation and if that CSS Animation's backing animation
             // has a default timing function set, then if that keyframe's timing function matches,
             // that keyframe is suitable.
@@ -191,10 +204,10 @@ void BlendingKeyframes::fillImplicitKeyframes(const KeyframeEffect& effect, cons
                 implicitZeroKeyframe = &keyframe;
         }
         if (keyframe.hasResolvedOffset())
-            expectedExplicitProperties.formUnion(keyframe.properties());
+            expectedExplicitProperties.addAll(keyframe.properties());
     }
 
-    auto addImplicitKeyframe = [&](double key, const UncheckedKeyHashSet<AnimatableCSSProperty>& implicitProperties, const StyleRuleKeyframe& keyframeRule, BlendingKeyframe* existingImplicitBlendingKeyframe) {
+    auto addImplicitKeyframe = [&](double key, const HashSet<AnimatableCSSProperty>& implicitProperties, const StyleRuleKeyframe& keyframeRule, BlendingKeyframe* existingImplicitBlendingKeyframe) {
         // If we're provided an existing implicit keyframe, we need to add all the styles for the implicit properties.
         if (existingImplicitBlendingKeyframe) {
             ASSERT(existingImplicitBlendingKeyframe->style());
@@ -209,7 +222,7 @@ void BlendingKeyframes::fillImplicitKeyframes(const KeyframeEffect& effect, cons
 
         // Otherwise we create a new keyframe.
         BlendingKeyframe blendingKeyframe(key, { nullptr });
-        blendingKeyframe.setStyle(styleResolver.styleForKeyframe(element, underlyingStyle, { nullptr }, keyframeRule, blendingKeyframe));
+        blendingKeyframe.setStyle(styleResolver->styleForKeyframe(element.get(), underlyingStyle, { nullptr }, keyframeRule, blendingKeyframe));
         for (auto property : implicitProperties)
             blendingKeyframe.addProperty(property);
         // Step 2 of https://drafts.csswg.org/css-animations-2/#keyframes defines the
@@ -223,7 +236,7 @@ void BlendingKeyframes::fillImplicitKeyframes(const KeyframeEffect& effect, cons
     if (!zeroKeyframeImplicitProperties.isEmpty())
         addImplicitKeyframe(0, zeroKeyframeImplicitProperties, zeroPercentKeyframe(), implicitZeroKeyframe);
 
-    UncheckedKeyHashSet<AnimatableCSSProperty> oneKeyframeExplicitProperties;
+    HashSet<AnimatableCSSProperty> oneKeyframeExplicitProperties;
     BlendingKeyframe* implicitOneKeyframe = nullptr;
 
     for (auto& keyframe : m_keyframes) {
@@ -298,7 +311,7 @@ bool BlendingKeyframes::hasPropertySetToCurrentColor() const
     return !m_propertiesSetToCurrentColor.isEmpty();
 }
 
-const UncheckedKeyHashSet<AnimatableCSSProperty>& BlendingKeyframes::propertiesSetToInherit() const
+const HashSet<AnimatableCSSProperty>& BlendingKeyframes::propertiesSetToInherit() const
 {
     return m_propertiesSetToInherit;
 }
@@ -306,14 +319,14 @@ const UncheckedKeyHashSet<AnimatableCSSProperty>& BlendingKeyframes::propertiesS
 void BlendingKeyframes::updatePropertiesMetadata(const StyleProperties& properties)
 {
     for (auto propertyReference : properties) {
-        auto* cssValue = propertyReference.value();
+        RefPtr cssValue = propertyReference.value();
         if (!cssValue)
             continue;
 
         if (!m_containsCSSVariableReferences && cssValue->hasVariableReferences())
             m_containsCSSVariableReferences = true;
 
-        if (auto* primitiveValue = dynamicDowncast<CSSPrimitiveValue>(cssValue)) {
+        if (RefPtr primitiveValue = dynamicDowncast<CSSPrimitiveValue>(cssValue)) {
             auto propertyID = propertyReference.id();
             auto valueId = primitiveValue->valueID();
 
@@ -329,8 +342,8 @@ void BlendingKeyframes::updatePropertiesMetadata(const StyleProperties& properti
                 if (dependencies.anchors)
                     m_usesAnchorFunctions = true;
             }
-        } else if (auto* customPropertyValue = dynamicDowncast<CSSCustomPropertyValue>(cssValue)) {
-            if (customPropertyValue->isInherit())
+        } else if (RefPtr customPropertyValue = dynamicDowncast<CSSCustomPropertyValue>(cssValue)) {
+            if (customPropertyValue->tryCSSWideKeyword() == CSSWideKeyword::Inherit)
                 m_propertiesSetToInherit.add(customPropertyValue->name());
             else if (customPropertyValue->isCurrentColor())
                 m_propertiesSetToCurrentColor.add(customPropertyValue->name());
@@ -360,12 +373,15 @@ void BlendingKeyframes::analyzeKeyframe(const BlendingKeyframe& keyframe)
         }
 
         if (keyframe.animatesProperty(CSSPropertyTranslate)) {
-            if (auto* translate = style->translate()) {
-                if (translate->x().isPercent())
-                    m_hasWidthDependentTransform = true;
-                if (translate->y().isPercent())
-                    m_hasHeightDependentTransform = true;
-            }
+            WTF::switchOn(style->translate(),
+                [&](const CSS::Keyword::None&) { },
+                [&](const Style::Translate::Operation& operation) {
+                    if (operation->x().isPercent())
+                        m_hasWidthDependentTransform = true;
+                    if (operation->y().isPercent())
+                        m_hasHeightDependentTransform = true;
+                }
+            );
         }
     };
 
@@ -382,9 +398,9 @@ void BlendingKeyframes::analyzeKeyframe(const BlendingKeyframe& keyframe)
     auto analyzeKeyframeForExplicitProperties = [&] {
         auto& properties = keyframe.properties();
         if (!keyframe.offset())
-            m_explicitFromProperties.add(properties.begin(), properties.end());
+            m_explicitFromProperties.addAll(properties);
         if (keyframe.offset() == 1)
-            m_explicitToProperties.add(properties.begin(), properties.end());
+            m_explicitToProperties.addAll(properties);
     };
 
     auto analyzeKeyframeRangeOffset = [&] {
@@ -404,9 +420,14 @@ void BlendingKeyframes::updatedComputedOffsets(NOESCAPE const Function<double(co
     for (auto& keyframe : m_keyframes)
         keyframe.setComputedOffset(callback(keyframe.specifiedOffset()));
 
-    std::ranges::stable_sort(m_keyframes, [](auto& lhs, auto& rhs) {
-        return lhs.offset() < rhs.offset();
-    });
+    std::ranges::stable_sort(m_keyframes, { }, &BlendingKeyframe::offset);
+}
+
+uint64_t BlendingKeyframes::nextAnonymousIdentifier()
+{
+    // Start from a random number so acceleratedAnimationName() won't ever collide with an author specified one.
+    static auto numericIdentifier = cryptographicallyRandomNumber<uint64_t>();
+    return ++numericIdentifier;
 }
 
 BlendingKeyframe::BlendingKeyframe(Offset&& offset, std::unique_ptr<RenderStyle>&& style)

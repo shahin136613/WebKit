@@ -27,8 +27,9 @@ import Foundation
 internal import WebKit_Internal
 
 extension WebPage {
+    /// A configuration type that specifies the preferences and behaviors of a webpage.
     @MainActor
-    @available(WK_IOS_TBA, WK_MAC_TBA, WK_XROS_TBA, *)
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
     @available(watchOS, unavailable)
     @available(tvOS, unavailable)
     public struct Configuration {
@@ -57,7 +58,7 @@ extension WebPage {
         public var defaultNavigationPreferences: WebPage.NavigationPreferences = WebPage.NavigationPreferences()
 
         /// Allows registering an object to load resources associated with a specified URL scheme.
-        public var urlSchemeHandlers: [URLScheme : any URLSchemeHandler] = [:]
+        public var urlSchemeHandlers: [URLScheme: any URLSchemeHandler] = [:]
 
         /// Allows specifying how web resources may access device sensors.
         ///
@@ -90,7 +91,7 @@ extension WebPage {
         /// Indicates whether the webpage loads all of its subresources in addition to the main resource.
         ///
         /// The default value of this property is `true`.
-        public var loadsSubresources: Bool  = true
+        public var loadsSubresources: Bool = true
 
         /// Indicates whether inline predictions are allowed.
         ///
@@ -104,7 +105,19 @@ extension WebPage {
         /// If `true`, they are inserted with the full adaptive sizing behavior.
         public var supportsAdaptiveImageGlyph: Bool = false
 
-#if os(iOS)
+        private var backingShowsSystemScreenTimeBlockingView = true
+
+        /// Indicates whether the webpage should use the system Screen Time blocking view.
+        ///
+        /// The default value is `true`. If `true`, the system Screen Time blocking view is shown when blocked by Screen Time.
+        /// If `false`, a blurred view of the web content is shown instead.
+        @available(visionOS, unavailable)
+        public var showsSystemScreenTimeBlockingView: Bool {
+            get { backingShowsSystemScreenTimeBlockingView }
+            set { backingShowsSystemScreenTimeBlockingView = newValue }
+        }
+
+        #if os(iOS)
         /// The types of data detectors to apply to the webpage's content.
         ///
         /// Data detectors add interactivity to web content by creating links for specially formatted text.
@@ -124,20 +137,20 @@ extension WebPage {
 
         /// Indicates whether HTML5 videos play inline or use the native full-screen controller.
         public var mediaPlaybackBehavior: MediaPlaybackBehavior = .automatic
-#endif
+        #endif
 
-#if os(macOS)
+        #if os(macOS)
         /// The directionality of user interface elements.
         ///
         /// The default value of this property is `.content`.
         public var userInterfaceDirectionPolicy: WKUserInterfaceDirectionPolicy = .content
-#endif
+        #endif
     }
 }
 
 extension WebPage {
     /// A type that describes the authorization permissions policy for the device's sensors a web resource may access.
-    @available(WK_IOS_TBA, WK_MAC_TBA, WK_XROS_TBA, *)
+    @available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
     @available(watchOS, unavailable)
     @available(tvOS, unavailable)
     public struct DeviceSensorAuthorization {

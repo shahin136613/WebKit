@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <wtf/Platform.h>
+
 #if ENABLE(ASSEMBLER) && CPU(ARM_THUMB2)
 
 #include <initializer_list>
@@ -2583,10 +2585,24 @@ public:
 
     Jump branch32(RelationalCondition cond, RegisterID left, RegisterID right)
     {
-        if (left == ARMRegisters::sp) {
+        if (left == ARMRegisters::sp && right == addressTempRegister && cond == Equal) {
+            m_assembler.sub_S(addressTempRegister, left, addressTempRegister);
+            return Jump(makeBranch(Zero));
+        } else if (left == ARMRegisters::sp && right == addressTempRegister && cond == NotEqual) {
+            m_assembler.sub_S(addressTempRegister, left, addressTempRegister);
+            return Jump(makeBranch(NonZero));
+        } else if (right == ARMRegisters::sp && left == addressTempRegister && cond == Equal) {
+            m_assembler.sub_S(addressTempRegister, right, addressTempRegister);
+            return Jump(makeBranch(Zero));
+        } else if (right == ARMRegisters::sp && left == addressTempRegister && cond == NotEqual) {
+            m_assembler.sub_S(addressTempRegister, right, addressTempRegister);
+            return Jump(makeBranch(NonZero));
+        } else if (left == ARMRegisters::sp) {
+            ASSERT(right != addressTempRegister);
             move(left, addressTempRegister);
             m_assembler.cmp(addressTempRegister, right);
         } else if (right == ARMRegisters::sp) {
+            ASSERT(left != addressTempRegister);
             move(right, addressTempRegister);
             m_assembler.cmp(left, addressTempRegister);
         } else
@@ -3012,11 +3028,16 @@ public:
         return Call(m_assembler.b(), Call::LinkableNearTail);
     }
 
+    ALWAYS_INLINE void padBeforePatch()
+    {
+        (void)label();
+        m_assembler.alignWithNop(sizeof(uint64_t));
+    }
+
     ALWAYS_INLINE Call threadSafePatchableNearCall()
     {
         invalidateAllTempRegisters();
         padBeforePatch();
-        m_assembler.alignWithNop(sizeof(int));
         m_assembler.bl();
         return Call(m_assembler.labelIgnoringWatchpoints(), Call::LinkableNear);
     }
@@ -3025,7 +3046,6 @@ public:
     {
         invalidateAllTempRegisters();
         padBeforePatch();
-        m_assembler.alignWithNop(sizeof(int));
         return Call(m_assembler.b(), Call::LinkableNearTail);
     }
 

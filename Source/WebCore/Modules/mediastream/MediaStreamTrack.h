@@ -32,6 +32,7 @@
 #include "ActiveDOMObject.h"
 #include "Blob.h"
 #include "EventTarget.h"
+#include "EventTargetInterfaces.h"
 #include "IDLTypes.h"
 #include "JSDOMPromiseDeferred.h"
 #include "MediaProducer.h"
@@ -188,7 +189,7 @@ public:
 protected:
     MediaStreamTrack(ScriptExecutionContext&, Ref<MediaStreamTrackPrivate>&&);
 
-    ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
+    ScriptExecutionContext* scriptExecutionContext() const final;
 
 private:
     explicit MediaStreamTrack(MediaStreamTrack&);

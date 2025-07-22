@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,14 +42,14 @@
 #include <wtf/RefPtr.h>
 #include <wtf/TZoneMalloc.h>
 #include <wtf/WeakHashSet.h>
-#if ENABLE(LINEAR_MEDIA_PLAYER)
 #include <WebCore/SpatialVideoMetadata.h>
-#endif
+#include <WebCore/VideoProjectionMetadata.h>
 
 namespace WebKit {
 
 class WebPageProxy;
 class PlaybackSessionManagerProxy;
+class RemotePagePlaybackSessionManagerProxy;
 class VideoReceiverEndpointMessage;
 class VideoReceiverSwapEndpointMessage;
 struct SharedPreferencesForWebProcess;
@@ -82,7 +82,7 @@ public:
     void bufferedTimeChanged(double);
     void playbackStartedTimeChanged(double);
     void rateChanged(OptionSet<WebCore::PlaybackSessionModel::PlaybackState>, double playbackRate, double defaultPlaybackRate);
-    void seekableRangesChanged(WebCore::TimeRanges&, double lastModifiedTime, double liveUpdateInterval);
+    void seekableRangesChanged(const WebCore::PlatformTimeRanges&, double lastModifiedTime, double liveUpdateInterval);
     void canPlayFastReverseChanged(bool);
     void audioMediaSelectionOptionsChanged(const Vector<WebCore::MediaSelectionOption>& options, uint64_t index);
     void legibleMediaSelectionOptionsChanged(const Vector<WebCore::MediaSelectionOption>& options, uint64_t index);
@@ -100,9 +100,10 @@ public:
 #endif
 #if ENABLE(LINEAR_MEDIA_PLAYER)
     void supportsLinearMediaPlayerChanged(bool);
-    void spatialVideoMetadataChanged(const std::optional<WebCore::SpatialVideoMetadata>&);
-    void isImmersiveVideoChanged(bool);
 #endif
+
+    void spatialVideoMetadataChanged(const std::optional<WebCore::SpatialVideoMetadata>&);
+    void videoProjectionMetadataChanged(const std::optional<WebCore::VideoProjectionMetadata>&);
 
     bool wirelessVideoPlaybackDisabled() const final { return m_wirelessVideoPlaybackDisabled; }
     const WebCore::VideoReceiverEndpoint& videoReceiverEndpoint() { return m_videoReceiverEndpoint; }
@@ -159,12 +160,13 @@ private:
     double duration() const final { return m_duration; }
     double currentTime() const final { return m_currentTime; }
     double bufferedTime() const final { return m_bufferedTime; }
+    OptionSet<PlaybackState> playbackState() const final { return m_playbackState; }
     bool isPlaying() const final { return m_playbackState.contains(PlaybackState::Playing); }
     bool isStalled() const final { return m_playbackState.contains(PlaybackState::Stalled); }
     bool isScrubbing() const final { return m_isScrubbing; }
     double defaultPlaybackRate() const final { return m_defaultPlaybackRate; }
     double playbackRate() const final { return m_playbackRate; }
-    Ref<WebCore::TimeRanges> seekableRanges() const final { return m_seekableRanges.copyRef(); }
+    WebCore::PlatformTimeRanges seekableRanges() const final { return m_seekableRanges; }
     double seekableTimeRangesLastModifiedTime() const final { return m_seekableTimeRangesLastModifiedTime; }
     double liveUpdateInterval() const { return m_liveUpdateInterval; }
     bool canPlayFastReverse() const final { return m_canPlayFastReverse; }
@@ -210,7 +212,7 @@ private:
     bool m_isScrubbing { false };
     double m_defaultPlaybackRate { 0 };
     double m_playbackRate { 0 };
-    Ref<WebCore::TimeRanges> m_seekableRanges { WebCore::TimeRanges::create() };
+    WebCore::PlatformTimeRanges m_seekableRanges;
     double m_seekableTimeRangesLastModifiedTime { 0 };
     double m_liveUpdateInterval { 0 };
     bool m_canPlayFastReverse { false };
@@ -232,9 +234,9 @@ private:
     WebCore::AudioSessionSoundStageSize m_soundStageSize { 0 };
 #if ENABLE(LINEAR_MEDIA_PLAYER)
     bool m_supportsLinearMediaPlayer { false };
-    std::optional<WebCore::SpatialVideoMetadata> m_spatialVideoMetadata;
-    bool m_isImmersiveVideo { false };
 #endif
+    std::optional<WebCore::SpatialVideoMetadata> m_spatialVideoMetadata;
+    std::optional<WebCore::VideoProjectionMetadata> m_videoProjectionMetadata;
 
 #if !RELEASE_LOG_DISABLED
     uint64_t m_logIdentifier { 0 };
@@ -261,17 +263,20 @@ public:
     void requestControlledElementID();
 
     bool isPaused(PlaybackSessionContextIdentifier) const;
-    std::optional<SharedPreferencesForWebProcess> sharedPreferencesForWebProcess() const;
+    std::optional<SharedPreferencesForWebProcess> sharedPreferencesForWebProcess(IPC::Connection&) const;
 
     // For testing.
     bool wirelessVideoPlaybackDisabled();
 
 private:
     friend class PlaybackSessionModelContext;
+    friend class RemotePagePlaybackSessionManagerProxy;
     friend class VideoPresentationManagerProxy;
 
     explicit PlaybackSessionManagerProxy(WebPageProxy&);
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
+
+    template <typename Message> void sendToWebProcess(PlaybackSessionContextIdentifier, Message&&);
 
     typedef std::tuple<Ref<PlaybackSessionModelContext>, Ref<WebCore::PlatformPlaybackSessionInterface>> ModelInterfaceTuple;
     ModelInterfaceTuple createModelAndInterface(PlaybackSessionContextIdentifier);
@@ -289,7 +294,7 @@ private:
     void swapFullscreenModes(PlaybackSessionContextIdentifier, PlaybackSessionContextIdentifier);
     void currentTimeChanged(PlaybackSessionContextIdentifier, double currentTime, double hostTime);
     void bufferedTimeChanged(PlaybackSessionContextIdentifier, double bufferedTime);
-    void seekableRangesVectorChanged(PlaybackSessionContextIdentifier, Vector<std::pair<double, double>> ranges, double lastModifiedTime, double liveUpdateInterval);
+    void seekableRangesVectorChanged(PlaybackSessionContextIdentifier, const WebCore::PlatformTimeRanges&, double lastModifiedTime, double liveUpdateInterval);
     void canPlayFastReverseChanged(PlaybackSessionContextIdentifier, bool value);
     void audioMediaSelectionOptionsChanged(PlaybackSessionContextIdentifier, Vector<WebCore::MediaSelectionOption> options, uint64_t selectedIndex);
     void legibleMediaSelectionOptionsChanged(PlaybackSessionContextIdentifier, Vector<WebCore::MediaSelectionOption> options, uint64_t selectedIndex);
@@ -310,9 +315,9 @@ private:
 #endif
 #if ENABLE(LINEAR_MEDIA_PLAYER)
     void supportsLinearMediaPlayerChanged(PlaybackSessionContextIdentifier, bool);
-    void spatialVideoMetadataChanged(PlaybackSessionContextIdentifier, const std::optional<WebCore::SpatialVideoMetadata>&);
-    void isImmersiveVideoChanged(PlaybackSessionContextIdentifier, bool);
 #endif
+    void spatialVideoMetadataChanged(PlaybackSessionContextIdentifier, const std::optional<WebCore::SpatialVideoMetadata>&);
+    void videoProjectionMetadataChanged(PlaybackSessionContextIdentifier, const std::optional<WebCore::VideoProjectionMetadata>&);
 
     // Messages to PlaybackSessionManager
 #if HAVE(PIP_SKIP_PREROLL)
@@ -370,7 +375,7 @@ private:
     HashCountedSet<PlaybackSessionContextIdentifier> m_clientCounts;
 
 #if !RELEASE_LOG_DISABLED
-    Ref<const Logger> m_logger;
+    const Ref<const Logger> m_logger;
     const uint64_t m_logIdentifier;
 #endif
 };

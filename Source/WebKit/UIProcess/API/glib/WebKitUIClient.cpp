@@ -104,7 +104,7 @@ private:
 
     bool canRunBeforeUnloadConfirmPanel() const final { return true; }
 
-    void runBeforeUnloadConfirmPanel(WebPageProxy&, const String& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(bool)>&& completionHandler) final
+    void runBeforeUnloadConfirmPanel(WebPageProxy&, String&& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(bool)>&& completionHandler) final
     {
         webkitWebViewRunJavaScriptBeforeUnloadConfirm(m_webView, message.utf8(), WTFMove(completionHandler));
     }
@@ -219,7 +219,7 @@ private:
 
             // We need the move/resize to happen synchronously in automation mode, so we use a nested RunLoop
             // to wait, up top 200 milliseconds, for the configure events.
-            auto timer = makeUnique<RunLoop::Timer>(RunLoop::main(), this, &UIClient::setWindowFrameTimerFired);
+            auto timer = makeUnique<RunLoop::Timer>(RunLoop::mainSingleton(), this, &UIClient::setWindowFrameTimerFired);
             timer->setPriority(RunLoopSourcePriority::RunLoopTimer);
             timer->startOneShot(200_ms);
             RunLoop::run();
@@ -297,12 +297,6 @@ private:
         webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(userMediaPermissionRequest.get()));
     }
 
-    void checkUserMediaPermissionForOrigin(WebPageProxy& page, WebFrameProxy&, API::SecurityOrigin& userMediaDocumentOrigin, API::SecurityOrigin& topLevelDocumentOrigin, UserMediaPermissionCheckProxy& permissionRequest) override
-    {
-        auto deviceInfoPermissionRequest = adoptGRef(webkitDeviceInfoPermissionRequestCreate(permissionRequest, page.websiteDataStore().ensureProtectedDeviceIdHashSaltStorage().ptr()));
-        webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(deviceInfoPermissionRequest.get()));
-    }
-
     void decidePolicyForNotificationPermissionRequest(WebPageProxy&, API::SecurityOrigin&, CompletionHandler<void(bool allowed)>&& completionHandler) final
     {
         GRefPtr<WebKitNotificationPermissionRequest> notificationPermissionRequest = adoptGRef(webkitNotificationPermissionRequestCreate(NotificationPermissionRequest::create(WTFMove(completionHandler)).ptr()));
@@ -355,9 +349,9 @@ private:
     }
 
 #if ENABLE(POINTER_LOCK)
-    void requestPointerLock(WebPageProxy* page) final
+    void requestPointerLock(WebPageProxy* page, CompletionHandler<void(bool)>&& completionHandler) final
     {
-        GRefPtr<WebKitPointerLockPermissionRequest> permissionRequest = adoptGRef(webkitPointerLockPermissionRequestCreate(m_webView));
+        GRefPtr<WebKitPointerLockPermissionRequest> permissionRequest = adoptGRef(webkitPointerLockPermissionRequestCreate(m_webView, WTFMove(completionHandler)));
         RELEASE_ASSERT(!m_pointerLockPermissionRequest);
         m_pointerLockPermissionRequest.reset(permissionRequest.get());
         webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(permissionRequest.get()));

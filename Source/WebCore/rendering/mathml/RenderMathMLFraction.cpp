@@ -34,6 +34,7 @@
 #include "MathMLFractionElement.h"
 #include "PaintInfo.h"
 #include "RenderMathMLBlockInlines.h"
+#include "RenderObjectInlines.h"
 #include <cmath>
 #include <wtf/TZoneMallocInlines.h>
 
@@ -179,7 +180,7 @@ RenderMathMLOperator* RenderMathMLFraction::unembellishedOperator() const
 
 void RenderMathMLFraction::computePreferredLogicalWidths()
 {
-    ASSERT(preferredLogicalWidthsDirty());
+    ASSERT(needsPreferredLogicalWidthsUpdate());
 
     if (!isValid()) {
         RenderMathMLRow::computePreferredLogicalWidths();
@@ -195,7 +196,7 @@ void RenderMathMLFraction::computePreferredLogicalWidths()
 
     adjustPreferredLogicalWidthsForBorderAndPadding();
 
-    setPreferredLogicalWidthsDirty(false);
+    clearNeedsPreferredWidthsUpdate();
 }
 
 LayoutUnit RenderMathMLFraction::horizontalOffset(RenderBox& child, MathMLFractionElement::FractionAlignment align) const
@@ -276,7 +277,7 @@ void RenderMathMLFraction::layoutBlock(RelayoutChildren relayoutChildren, Layout
 
     adjustLayoutForBorderAndPadding();
 
-    layoutPositionedObjects(relayoutChildren);
+    layoutOutOfFlowBoxes(relayoutChildren);
 
     updateScrollInfoAfterLayout();
 

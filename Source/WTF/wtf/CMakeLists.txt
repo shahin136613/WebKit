@@ -1,3 +1,7 @@
+if (ENABLE_MALLOC_HEAP_BREAKDOWN AND NOT APPLE)
+    include(MallocHeapBreakdown.cmake)
+endif ()
+
 set(WTF_PUBLIC_HEADERS
     AbstractRefCounted.h
     AbstractRefCountedAndCanMakeWeakPtr.h
@@ -5,7 +9,6 @@ set(WTF_PUBLIC_HEADERS
     ASCIICType.h
     AccessibleAddress.h
     AggregateLogger.h
-    Algorithms.h
     AlignedStorage.h
     AnsiColors.h
     ApproximateTime.h
@@ -37,7 +40,6 @@ set(WTF_PUBLIC_HEADERS
     CallbackAggregator.h
     CancellableTask.h
     CheckedArithmetic.h
-    CheckedBoolean.h
     CheckedPtr.h
     CheckedRef.h
     ClockType.h
@@ -144,6 +146,7 @@ set(WTF_PUBLIC_HEADERS
     JSValueMalloc.h
     KeyValuePair.h
     LEBDecoder.h
+    LLVMProfilingUtils.h
     Language.h
     LazyRef.h
     LazyUniqueRef.h
@@ -191,6 +194,7 @@ set(WTF_PUBLIC_HEADERS
     NeverDestroyed.h
     NoLock.h
     NoTailCalls.h
+    NoVirtualDestructorBase.h
     Noncopyable.h
     Nonmovable.h
     NotFound.h
@@ -202,6 +206,7 @@ set(WTF_PUBLIC_HEADERS
     ObjectIdentifier.h
     Observer.h
     OptionSet.h
+    OptionalOrReference.h
     OptionSetHash.h
     OrderMaker.h
     OverflowPolicy.h
@@ -306,6 +311,7 @@ set(WTF_PUBLIC_HEADERS
     StackShotProfiler.h
     StackStats.h
     StackTrace.h
+    StatisticsManager.h
     StdFilesystem.h
     StdIntExtras.h
     StdLibExtras.h
@@ -320,7 +326,9 @@ set(WTF_PUBLIC_HEADERS
     StringExtras.h
     StringHashDumpContext.h
     StringPrintStream.h
+    StructDump.h
     SuspendableWorkQueue.h
+    SwiftBridging.h
     SynchronizedFixedQueue.h
     SystemFree.h
     SystemMalloc.h
@@ -365,6 +373,8 @@ set(WTF_PUBLIC_HEADERS
     VMTags.h
     ValidatedReinterpretCast.h
     ValueCheck.h
+    ValueOrReference.h
+    Variant.h
     VariantExtras.h
     VariantList.h
     VariantListOperations.h
@@ -375,6 +385,7 @@ set(WTF_PUBLIC_HEADERS
     WTFProcess.h
     WTFSemaphore.h
     WallTime.h
+    WasmSIMD128.h
     WeakHashCountedSet.h
     WeakHashMap.h
     WeakHashSet.h
@@ -592,6 +603,7 @@ set(WTF_SOURCES
     StackPointer.cpp
     StackStats.cpp
     StackTrace.cpp
+    StatisticsManager.cpp
     StringPrintStream.cpp
     SuspendableWorkQueue.cpp
     ThreadGroup.cpp
@@ -711,7 +723,7 @@ elseif (APPLE)
         spi/cocoa/SecuritySPI.h
         spi/cocoa/objcSPI.h
 
-        spi/darwin/AbortWithReasonSPI.h
+        spi/darwin/ReasonSPI.h
         spi/darwin/CodeSignSPI.h
         spi/darwin/DataVaultSPI.h
         spi/darwin/OSVariantSPI.h
@@ -778,6 +790,7 @@ WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
 if (PORT STREQUAL GTK OR PORT STREQUAL WPE)
     WEBKIT_ADD_TARGET_CXX_FLAGS(WTF
         -Wunsafe-buffer-usage
+        -Wunsafe-buffer-usage-in-libc-call
         -fsafe-buffer-usage-suggestions
     )
 endif ()

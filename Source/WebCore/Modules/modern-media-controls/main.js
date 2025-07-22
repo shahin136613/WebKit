@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2016 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,7 @@ const MaximumSizeToShowSmallProminentControl = 88;
 
 let mediaControlsHost;
 
-// This is called from HTMLMediaElement::ensureMediaControlsInjectedScript().
+// This is called from HTMLMediaElement::ensureMediaControls().
 function createControls(shadowRoot, media, host)
 {
     if (host) {

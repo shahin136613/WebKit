@@ -36,6 +36,7 @@
 #include "PushClientConnectionMessages.h"
 #include "WebPushDaemonConnectionConfiguration.h"
 #include "WebPushMessage.h"
+#include <WebCore/NotificationData.h>
 #include <WebCore/SecurityOriginData.h>
 #include <wtf/TZoneMallocInlines.h>
 
@@ -261,8 +262,7 @@ void NetworkNotificationManager::getPermissionStateSync(WebCore::SecurityOriginD
 
 std::optional<SharedPreferencesForWebProcess> NetworkNotificationManager::sharedPreferencesForWebProcess(const IPC::Connection& connection) const
 {
-    Ref networkProcess = m_networkProcess;
-    return networkProcess->webProcessConnection(connection)->sharedPreferencesForWebProcess();
+    return m_networkProcess->webProcessConnection(connection)->sharedPreferencesForWebProcess();
 }
 
 RefPtr<WebPushD::Connection> NetworkNotificationManager::protectedConnection() const

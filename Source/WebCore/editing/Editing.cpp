@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2004-2022 Apple Inc. All rights reserved.
+ * Copyright (C) 2004-2025 Apple Inc. All rights reserved.
  * Copyright (C) 2015 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,11 +29,13 @@
 
 #include "AXObjectCache.h"
 #include "CachedImage.h"
+#include "ContainerNodeInlines.h"
 #include "DocumentInlines.h"
 #include "EditingInlines.h"
 #include "Editor.h"
 #include "ElementChildIteratorInlines.h"
 #include "ElementInlines.h"
+#include "GraphicsLayer.h"
 #include "HTMLBodyElement.h"
 #include "HTMLDListElement.h"
 #include "HTMLDivElement.h"
@@ -50,12 +52,16 @@
 #include "HTMLTextFormControlElement.h"
 #include "HTMLUListElement.h"
 #include "HitTestSource.h"
+#include "ImageOverlay.h"
 #include "LocalFrame.h"
 #include "NodeTraversal.h"
 #include "PositionIterator.h"
 #include "Range.h"
 #include "RenderBlock.h"
 #include "RenderElement.h"
+#include "RenderLayer.h"
+#include "RenderLayerBacking.h"
+#include "RenderObjectInlines.h"
 #include "RenderStyleInlines.h"
 #include "RenderTableCell.h"
 #include "RenderTextControlSingleLine.h"
@@ -182,7 +188,7 @@ Element* editableRootForPosition(const Position& position, EditableType editable
     case HasEditableAXRole:
         if (CheckedPtr cache = node->document().existingAXObjectCache())
             return const_cast<Element*>(cache->rootAXEditableElement(node.get()));
-        FALLTHROUGH;
+        [[fallthrough]];
     case ContentIsEditable:
         return node->rootEditableElement();
     }
@@ -283,7 +289,7 @@ Position firstEditablePositionAfterPositionInRoot(const Position& position, Cont
     while (candidate.deprecatedNode() && !isEditablePosition(candidate) && candidate.protectedDeprecatedNode()->isDescendantOf(*highestRoot))
         candidate = isAtomicNode(candidate.deprecatedNode()) ? positionInParentAfterNode(candidate.protectedDeprecatedNode().get()) : nextVisuallyDistinctCandidate(candidate);
 
-    if (candidate.deprecatedNode() && candidate.deprecatedNode() != highestRoot && !candidate.protectedDeprecatedNode()->isDescendantOf(*highestRoot))
+    if (candidate.deprecatedNode() && !candidate.protectedDeprecatedNode()->isInclusiveDescendantOf(*highestRoot))
         return { };
 
     return candidate;
@@ -311,7 +317,7 @@ Position lastEditablePositionBeforePositionInRoot(const Position& position, Cont
     while (candidate.deprecatedNode() && !isEditablePosition(candidate) && candidate.protectedDeprecatedNode()->isDescendantOf(*highestRoot))
         candidate = isAtomicNode(candidate.deprecatedNode()) ? positionInParentBeforeNode(candidate.protectedDeprecatedNode().get()) : previousVisuallyDistinctCandidate(candidate);
     
-    if (candidate.deprecatedNode() && candidate.deprecatedNode() != highestRoot && !candidate.protectedDeprecatedNode()->isDescendantOf(*highestRoot))
+    if (candidate.deprecatedNode() && !candidate.protectedDeprecatedNode()->isInclusiveDescendantOf(*highestRoot))
         return { };
     
     return candidate;
@@ -362,7 +368,7 @@ int lastOffsetForEditing(const Node& node)
     return editingIgnoresContent(node) ? 1 : 0;
 }
 
-bool isAmbiguousBoundaryCharacter(UChar character)
+bool isAmbiguousBoundaryCharacter(char16_t character)
 {
     // These are characters that can behave as word boundaries, but can appear within words.
     // If they are just typed, i.e. if they are immediately followed by a caret, we want to delay text checking until the next character has been typed.
@@ -421,7 +427,7 @@ const String& nonBreakingSpaceString()
 RefPtr<Element> isFirstPositionAfterTable(const VisiblePosition& position)
 {
     Position upstream(position.deepEquivalent().upstream());
-    auto node = upstream.protectedDeprecatedNode();
+    RefPtr node = upstream.deprecatedNode();
     if (!node)
         return nullptr;
     auto* renderer = node->renderer();
@@ -433,7 +439,7 @@ RefPtr<Element> isFirstPositionAfterTable(const VisiblePosition& position)
 RefPtr<Element> isLastPositionBeforeTable(const VisiblePosition& position)
 {
     Position downstream(position.deepEquivalent().downstream());
-    auto node = downstream.protectedDeprecatedNode();
+    RefPtr node = downstream.deprecatedNode();
     if (!node)
         return nullptr;
     auto* renderer = node->renderer();
@@ -500,7 +506,7 @@ bool isListItem(const Node& node)
 Element* enclosingElementWithTag(const Position& position, const QualifiedName& tagName)
 {
     auto root = highestEditableRoot(position);
-    for (RefPtr node = position.protectedDeprecatedNode(); node; node = node->parentNode()) {
+    for (RefPtr node = position.deprecatedNode(); node; node = node->parentNode()) {
         if (root && !node->hasEditableStyle())
             continue;
         auto* element = dynamicDowncast<Element>(*node);
@@ -519,7 +525,7 @@ RefPtr<Node> enclosingNodeOfType(const Position& position, bool (*nodeIsOfType)(
     // FIXME: support CanSkipCrossEditingBoundary
     ASSERT(rule == CanCrossEditingBoundary || rule == CannotCrossEditingBoundary);
     auto root = rule == CannotCrossEditingBoundary ? highestEditableRoot(position) : nullptr;
-    for (auto n = position.protectedDeprecatedNode(); n; n = n->parentNode()) {
+    for (RefPtr n = position.deprecatedNode(); n; n = n->parentNode()) {
         // Don't return a non-editable node if the input position was editable, since
         // the callers from editing will no doubt want to perform editing inside the returned node.
         if (root && !n->hasEditableStyle())
@@ -582,7 +588,7 @@ RefPtr<Element> enclosingTableCell(const Position& position)
 
 RefPtr<Element> enclosingAnchorElement(const Position& p)
 {
-    for (auto node = p.protectedDeprecatedNode(); node; node = node->parentNode()) {
+    for (RefPtr node = p.deprecatedNode(); node; node = node->parentNode()) {
         if (RefPtr element = dynamicDowncast<Element>(*node); element && element->isLink())
             return element;
     }
@@ -824,16 +830,10 @@ Ref<Element> createTabSpanElement(Document& document)
     return createTabSpanElement(document, document.createEditingTextNode("\t"_s));
 }
 
-bool isNodeRendered(const Node& node)
-{
-    auto* renderer = node.renderer();
-    return renderer && renderer->style().visibility() == Visibility::Visible;
-}
-
 unsigned numEnclosingMailBlockquotes(const Position& position)
 {
     unsigned count = 0;
-    for (auto node = position.protectedDeprecatedNode(); node; node = node->parentNode()) {
+    for (RefPtr node = position.deprecatedNode(); node; node = node->parentNode()) {
         if (isMailBlockquote(*node))
             ++count;
     }
@@ -846,25 +846,25 @@ void updatePositionForNodeRemoval(Position& position, Node& node)
         return;
     switch (position.anchorType()) {
     case Position::PositionIsBeforeChildren:
-        if (node.containsIncludingShadowDOM(position.containerNode()))
+        if (node.isShadowIncludingInclusiveAncestorOf(position.containerNode()))
             position = positionInParentBeforeNode(&node);
         break;
     case Position::PositionIsAfterChildren:
-        if (node.containsIncludingShadowDOM(position.containerNode()))
+        if (node.isShadowIncludingInclusiveAncestorOf(position.containerNode()))
             position = positionInParentBeforeNode(&node);
         break;
     case Position::PositionIsOffsetInAnchor:
         if (position.containerNode() == node.parentNode() && static_cast<unsigned>(position.offsetInContainerNode()) > node.computeNodeIndex())
             position.moveToOffset(position.offsetInContainerNode() - 1);
-        else if (node.containsIncludingShadowDOM(position.containerNode()))
+        else if (node.isShadowIncludingInclusiveAncestorOf(position.containerNode()))
             position = positionInParentBeforeNode(&node);
         break;
     case Position::PositionIsAfterAnchor:
-        if (node.containsIncludingShadowDOM(position.anchorNode()))
+        if (node.isShadowIncludingInclusiveAncestorOf(position.anchorNode()))
             position = positionInParentAfterNode(&node);
         break;
     case Position::PositionIsBeforeAnchor:
-        if (node.containsIncludingShadowDOM(position.anchorNode()))
+        if (node.isShadowIncludingInclusiveAncestorOf(position.anchorNode()))
             position = positionInParentBeforeNode(&node);
         break;
     }
@@ -1502,6 +1502,83 @@ SimpleRange adjustToVisuallyContiguousRange(const SimpleRange& range)
         RangeEndpointsToAdjust::Start,
         RangeEndpointsToAdjust::End
     }, SelectionExtentMovement::Closest).value_or(range);
+}
+
+EnclosingLayerInfomation computeEnclosingLayer(const SimpleRange& range)
+{
+    auto [start, end] = positionsForRange(range);
+
+    if (start.isOrphan() || end.isOrphan())
+        return { };
+
+    if (!isEditablePosition(start) && range.collapsed())
+        return { };
+
+    auto findEnclosingLayer = [](const Position& position) -> RenderLayer* {
+        RefPtr container = position.containerNode();
+        if (!container)
+            return nullptr;
+
+        CheckedPtr renderer = container->renderer();
+        if (!renderer)
+            return nullptr;
+
+        return renderer->enclosingLayer();
+    };
+
+    auto [startLayer, endLayer] = [&] -> std::pair<CheckedPtr<RenderLayer>, CheckedPtr<RenderLayer>> {
+        if (RefPtr container = start.containerNode(); container && ImageOverlay::isInsideOverlay(*container)) {
+            RefPtr host = container->shadowHost();
+            if (!host) {
+                ASSERT_NOT_REACHED();
+                return { };
+            }
+
+            CheckedPtr renderer = host->renderer();
+            if (!renderer)
+                return { };
+
+            CheckedPtr enclosingLayer = renderer->enclosingLayer();
+            return { enclosingLayer, enclosingLayer };
+        }
+
+        return { findEnclosingLayer(start), findEnclosingLayer(end) };
+    }();
+
+    if (!startLayer)
+        return { };
+
+    if (!endLayer)
+        return { };
+
+    for (CheckedPtr layer = startLayer->commonAncestorWithLayer(*endLayer); layer; layer = layer->enclosingContainingBlockLayer(CrossFrameBoundaries::Yes)) {
+        if (!layer->isComposited())
+            continue;
+
+        RefPtr graphicsLayer = [layer] -> RefPtr<GraphicsLayer> {
+            auto* backing = layer->backing();
+            if (RefPtr scrolledContentsLayer = backing->scrolledContentsLayer())
+                return scrolledContentsLayer;
+
+            if (RefPtr foregroundLayer = backing->foregroundLayer())
+                return foregroundLayer;
+
+            if (backing->isFrameLayerWithTiledBacking())
+                return backing->parentForSublayers();
+
+            return backing->graphicsLayer();
+        }();
+
+        if (!graphicsLayer)
+            continue;
+
+        auto identifier = graphicsLayer->layerIDIgnoringStructuralLayer();
+        if (!identifier)
+            continue;
+
+        return { WTFMove(startLayer), WTFMove(endLayer), WTFMove(layer), WTFMove(graphicsLayer), WTFMove(identifier) };
+    }
+    return { };
 }
 
 void adjustVisibleExtentPreservingVisualContiguity(const VisiblePosition& base, VisiblePosition& extent, SelectionExtentMovement movement)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2022-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,8 +29,13 @@
 #if ENABLE(DOM_AUDIO_SESSION)
 
 #include "AudioSession.h"
+#include "ContextDestructionObserverInlines.h"
 #include "Document.h"
+#include "Event.h"
 #include "EventNames.h"
+#include "EventTargetInlines.h"
+#include "EventTargetInterfaces.h"
+#include "ExceptionOr.h"
 #include "Page.h"
 #include "PermissionsPolicy.h"
 #include "PlatformMediaSessionManager.h"
@@ -72,12 +77,12 @@ Ref<DOMAudioSession> DOMAudioSession::create(ScriptExecutionContext* context)
 DOMAudioSession::DOMAudioSession(ScriptExecutionContext* context)
     : ActiveDOMObject(context)
 {
-    AudioSession::protectedSharedSession()->addInterruptionObserver(*this);
+    AudioSession::singleton().addInterruptionObserver(*this);
 }
 
 DOMAudioSession::~DOMAudioSession()
 {
-    AudioSession::protectedSharedSession()->removeInterruptionObserver(*this);
+    AudioSession::singleton().removeInterruptionObserver(*this);
 }
 
 ExceptionOr<void> DOMAudioSession::setType(Type type)
@@ -86,7 +91,7 @@ ExceptionOr<void> DOMAudioSession::setType(Type type)
     if (!document)
         return Exception { ExceptionCode::InvalidStateError };
 
-    RefPtr page = document->protectedPage();
+    RefPtr page = document->page();
     if (!page)
         return Exception { ExceptionCode::InvalidStateError };
 
@@ -96,7 +101,7 @@ ExceptionOr<void> DOMAudioSession::setType(Type type)
     page->setAudioSessionType(type);
 
     auto categoryOverride = fromDOMAudioSessionType(type);
-    AudioSession::protectedSharedSession()->setCategoryOverride(categoryOverride);
+    AudioSession::singleton().setCategoryOverride(categoryOverride);
 
     if (categoryOverride == AudioSessionCategory::None)
         PlatformMediaSessionManager::updateAudioSessionCategoryIfNecessary();
@@ -113,7 +118,7 @@ DOMAudioSession::Type DOMAudioSession::type() const
     if (!document)
         return DOMAudioSession::Type::Auto;
 
-    if (RefPtr page = document->protectedPage())
+    if (RefPtr page = document->page())
         return page->audioSessionType();
 
     return DOMAudioSession::Type::Auto;
@@ -121,10 +126,10 @@ DOMAudioSession::Type DOMAudioSession::type() const
 
 static DOMAudioSession::State computeAudioSessionState()
 {
-    if (AudioSession::sharedSession().isInterrupted())
+    if (AudioSession::singleton().isInterrupted())
         return DOMAudioSession::State::Interrupted;
 
-    if (!AudioSession::sharedSession().isActive())
+    if (!AudioSession::singleton().isActive())
         return DOMAudioSession::State::Inactive;
 
     return DOMAudioSession::State::Active;
@@ -139,6 +144,16 @@ DOMAudioSession::State DOMAudioSession::state() const
     if (!m_state)
         m_state = computeAudioSessionState();
     return *m_state;
+}
+
+enum EventTargetInterfaceType DOMAudioSession::eventTargetInterface() const
+{
+    return EventTargetInterfaceType::DOMAudioSession;
+}
+
+ScriptExecutionContext* DOMAudioSession::scriptExecutionContext() const
+{
+    return ContextDestructionObserver::scriptExecutionContext();
 }
 
 void DOMAudioSession::stop()

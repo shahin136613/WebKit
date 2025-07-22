@@ -30,6 +30,7 @@
 #include "AccessibilitySlider.h"
 
 #include "AXObjectCache.h"
+#include "ContainerNodeInlines.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "RenderSlider.h"
@@ -52,15 +53,10 @@ Ref<AccessibilitySlider> AccessibilitySlider::create(AXID axID, RenderObject& re
     return adoptRef(*new AccessibilitySlider(axID, renderer));
 }
 
-AccessibilityOrientation AccessibilitySlider::orientation() const
+std::optional<AccessibilityOrientation> AccessibilitySlider::explicitOrientation() const
 {
-    auto ariaOrientation = getAttribute(aria_orientationAttr);
-    if (equalLettersIgnoringASCIICase(ariaOrientation, "horizontal"_s))
-        return AccessibilityOrientation::Horizontal;
-    if (equalLettersIgnoringASCIICase(ariaOrientation, "vertical"_s))
-        return AccessibilityOrientation::Vertical;
-    if (equalLettersIgnoringASCIICase(ariaOrientation, "undefined"_s))
-        return AccessibilityOrientation::Undefined;
+    if (std::optional orientation = orientationFromARIA())
+        return orientation;
 
     const auto* style = this->style();
     // Default to horizontal in the unknown case.
@@ -103,6 +99,10 @@ void AccessibilitySlider::addChildren()
         cache->remove(thumb->objectID());
     else
         addChild(thumb.get());
+
+#ifndef NDEBUG
+    verifyChildrenIndexInParent();
+#endif
 }
 
 AccessibilityObject* AccessibilitySlider::elementAccessibilityHitTest(const IntPoint& point) const
@@ -118,21 +118,21 @@ AccessibilityObject* AccessibilitySlider::elementAccessibilityHitTest(const IntP
 
 float AccessibilitySlider::valueForRange() const
 {
-    if (auto* input = inputElement())
-        return input->value().toFloat();
+    if (RefPtr input = inputElement())
+        return input->value()->toFloat();
     return 0;
 }
 
 float AccessibilitySlider::maxValueForRange() const
 {
-    if (auto* input = inputElement())
+    if (RefPtr input = inputElement())
         return static_cast<float>(input->maximum());
     return 0;
 }
 
 float AccessibilitySlider::minValueForRange() const
 {
-    if (auto* input = inputElement())
+    if (RefPtr input = inputElement())
         return static_cast<float>(input->minimum());
     return 0;
 }

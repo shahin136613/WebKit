@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2024-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -56,7 +56,7 @@ bool AXSearchManager::matchForSearchKeyAtIndex(Ref<AXCoreObject> axObject, const
         // The AccessibilitySearchKey::AnyType matches any non-null AccessibilityObject.
         return true;
     case AccessibilitySearchKey::Article:
-        return axObject->roleValue() == AccessibilityRole::DocumentArticle;
+        return axObject->role() == AccessibilityRole::DocumentArticle;
     case AccessibilitySearchKey::BlockquoteSameLevel:
         return criteria.startObject
             && axObject->isBlockquote()
@@ -73,7 +73,7 @@ bool AXSearchManager::matchForSearchKeyAtIndex(Ref<AXCoreObject> axObject, const
         return axObject->isControl() || axObject->isSummary();
     case AccessibilitySearchKey::DifferentType:
         return criteria.startObject
-            && axObject->roleValue() != criteria.startObject->roleValue();
+            && axObject->role() != criteria.startObject->role();
     case AccessibilitySearchKey::FontChange:
         return criteria.startObject
             && !axObject->hasSameFont(*criteria.startObject);
@@ -114,7 +114,7 @@ bool AXSearchManager::matchForSearchKeyAtIndex(Ref<AXCoreObject> axObject, const
         bool isLink = axObject->isLink();
 #if PLATFORM(IOS_FAMILY)
         if (!isLink)
-            isLink = axObject->isDescendantOfRole(AccessibilityRole::WebCoreLink);
+            isLink = axObject->isDescendantOfRole(AccessibilityRole::Link);
 #endif
         return isLink;
     }
@@ -137,7 +137,7 @@ bool AXSearchManager::matchForSearchKeyAtIndex(Ref<AXCoreObject> axObject, const
         return axObject->isRadioGroup() || isRadioButtonInDifferentAdhocGroup(axObject, criteria.startObject);
     case AccessibilitySearchKey::SameType:
         return criteria.startObject
-            && axObject->roleValue() == criteria.startObject->roleValue();
+            && axObject->role() == criteria.startObject->role();
     case AccessibilitySearchKey::StaticText:
         return axObject->isStaticText();
     case AccessibilitySearchKey::StyleChange:
@@ -154,9 +154,9 @@ bool AXSearchManager::matchForSearchKeyAtIndex(Ref<AXCoreObject> axObject, const
     case AccessibilitySearchKey::Underline:
         return axObject->hasUnderline();
     case AccessibilitySearchKey::UnvisitedLink:
-        return axObject->isUnvisited();
+        return axObject->isUnvisitedLink();
     case AccessibilitySearchKey::VisitedLink:
-        return axObject->isVisited();
+        return axObject->isVisitedLink();
     default:
         return false;
     }
@@ -197,20 +197,20 @@ bool AXSearchManager::matchWithResultsLimit(Ref<AXCoreObject> object, const Acce
 
 static void appendAccessibilityObject(Ref<AXCoreObject> object, AccessibilityObject::AccessibilityChildrenVector& results)
 {
-    if (LIKELY(!object->isAttachment()))
+    if (!object->isAttachment()) [[likely]]
         results.append(WTFMove(object));
     else {
         // Find the next descendant of this attachment object so search can continue through frames.
-        Widget* widget = object->widgetForAttachmentView();
-        auto* frameView = dynamicDowncast<LocalFrameView>(widget);
+        RefPtr widget = object->widgetForAttachmentView();
+        RefPtr frameView = dynamicDowncast<LocalFrameView>(widget);
         if (!frameView)
             return;
-        auto* document = frameView->frame().document();
+        RefPtr document = frameView->frame().document();
         if (!document || !document->hasLivingRenderTree())
             return;
 
         CheckedPtr cache = object->axObjectCache();
-        if (auto* axDocument = cache ? cache->getOrCreate(*document) : nullptr)
+        if (RefPtr axDocument = cache ? cache->getOrCreate(*document) : nullptr)
             results.append(*axDocument);
     }
 }
@@ -242,8 +242,9 @@ static void appendChildrenToArray(Ref<AXCoreObject> object, bool isForward, RefP
         // We should only ever hit this case with a live object (not an isolated object), as it would require startObject to be ignored,
         // and we should never have created an isolated object from an ignored live object.
         // FIXME: This is not true for ENABLE(INCLUDE_IGNORED_IN_CORE_AX_TREE), fix this before shipping it.
+        // FIXME: We hit this ASSERT on google.com. https://bugs.webkit.org/show_bug.cgi?id=293263
         ASSERT(is<AccessibilityObject>(startObject));
-        auto* newStartObject = dynamicDowncast<AccessibilityObject>(startObject.get());
+        RefPtr newStartObject = dynamicDowncast<AccessibilityObject>(startObject.get());
         // Get the un-ignored sibling based on the search direction, and update the searchPosition.
         if (newStartObject && newStartObject->isIgnored())
             newStartObject = isForward ? newStartObject->previousSiblingUnignored() : newStartObject->nextSiblingUnignored();
@@ -283,7 +284,7 @@ AXCoreObject::AccessibilityChildrenVector AXSearchManager::findMatchingObjectsIn
         return { };
 
 #if PLATFORM(MAC)
-    if (criteria.searchKeys.size() == 1 && criteria.usePreCachedResults) {
+    if (criteria.searchKeys.size() == 1) {
         // Only perform these optimizations if we aren't expected to start from somewhere mid-tree.
         // We could probably implement these optimizations when we do have a startObject and get
         // performance benefits, but no known assistive technology needs this right now.
@@ -330,7 +331,7 @@ AXCoreObject::AccessibilityChildrenVector AXSearchManager::findMatchingObjectsIn
     }
 
     // The outer loop steps up the parent chain each time (unignored is important here because otherwise elements would be searched twice)
-    for (auto* stopSearchElement = criteria.anchorObject->parentObjectUnignored(); startObject && startObject != stopSearchElement; startObject = startObject->parentObjectUnignored()) {
+    for (RefPtr stopSearchElement = criteria.anchorObject->parentObjectUnignored(); startObject && startObject != stopSearchElement; startObject = startObject->parentObjectUnignored()) {
         // Only append the children after/before the previous element, so that the search does not check elements that are
         // already behind/ahead of start element.
         AXCoreObject::AccessibilityChildrenVector searchStack;
@@ -410,37 +411,6 @@ std::optional<AXTextMarkerRange> AXSearchManager::findMatchingRange(Accessibilit
         return forward ? ranges[0] : ranges.last();
     }
     return std::nullopt;
-}
-
-AXCoreObject* AXSearchManager::findNextStartingFrom(AccessibilitySearchKey key, AXCoreObject* start, AXCoreObject& anchor)
-{
-    AccessibilitySearchCriteria criteria;
-    criteria.startObject = start;
-    criteria.anchorObject = &anchor;
-    criteria.searchDirection = AccessibilitySearchDirection::Next;
-    criteria.searchKeys = { key };
-    criteria.resultsLimit = 1;
-    criteria.visibleOnly = false;
-    criteria.immediateDescendantsOnly = false;
-    criteria.usePreCachedResults = false;
-
-    auto results = findMatchingObjectsInternal(criteria);
-    return results.size() ? results[0].ptr() : nullptr;
-}
-
-AXCoreObject::AccessibilityChildrenVector AXSearchManager::findAllMatchingObjectsIgnoringCache(Vector<AccessibilitySearchKey>&& keys, AXCoreObject& anchor)
-{
-    AccessibilitySearchCriteria criteria;
-    criteria.anchorObject = &anchor;
-    criteria.startObject = nullptr;
-    criteria.searchDirection = AccessibilitySearchDirection::Next;
-    criteria.searchKeys = WTFMove(keys);
-    criteria.resultsLimit = std::numeric_limits<unsigned>::max();
-    criteria.visibleOnly = false;
-    criteria.immediateDescendantsOnly = false;
-    criteria.usePreCachedResults = false;
-
-    return findMatchingObjectsInternal(criteria);
 }
 
 } // namespace WebCore

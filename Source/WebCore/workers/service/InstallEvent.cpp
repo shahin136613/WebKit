@@ -29,10 +29,10 @@
 #include "HTTPParsers.h"
 #include "JSDOMPromise.h"
 #include "JSDOMPromiseDeferred.h"
+#include "ScriptExecutionContextInlines.h"
 #include "ServiceWorkerGlobalScope.h"
 #include "ServiceWorkerRoute.h"
 #include "WorkerSWClientConnection.h"
-#include <wtf/Algorithms.h>
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -169,7 +169,7 @@ static std::optional<Exception> addServiceWorkerRoute(Vector<ServiceWorkerRoute>
 }
 
 // https://w3c.github.io/ServiceWorker/#dom-installevent-addroutes
-void InstallEvent::addRoutes(JSC::JSGlobalObject& globalObject, std::variant<RouterRule, Vector<RouterRule>>&& rules, Ref<DeferredPromise>&& promise)
+void InstallEvent::addRoutes(JSC::JSGlobalObject& globalObject, Variant<RouterRule, Vector<RouterRule>>&& rules, Ref<DeferredPromise>&& promise)
 {
     auto& jsDOMGlobalObject = *JSC::jsCast<JSDOMGlobalObject*>(&globalObject);
     RefPtr serviceWorkerGlobalScope = dynamicDowncast<ServiceWorkerGlobalScope>(jsDOMGlobalObject.scriptExecutionContext());

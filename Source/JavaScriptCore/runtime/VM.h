@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2008-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,6 +55,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include "NumericStrings.h"
 #include "SlotVisitorMacros.h"
 #include "SmallStrings.h"
+#include "SourceTaintedOrigin.h"
 #include "StringReplaceCache.h"
 #include "StringSplitCache.h"
 #include "Strong.h"
@@ -64,7 +65,6 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include "WasmContext.h"
 #include "WeakGCMap.h"
 #include "WriteBarrier.h"
-#include <variant>
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/DoublyLinkedList.h>
@@ -81,9 +81,12 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include <wtf/ThreadSafeRefCountedWithSuppressingSaferCPPChecking.h>
 #include <wtf/ThreadSafeWeakHashSet.h>
 #include <wtf/UniqueArray.h>
+#include <wtf/WeakRandom.h>
 #include <wtf/text/AdaptiveStringSearcher.h>
+#include <wtf/text/StringImpl.h>
 #include <wtf/text/SymbolImpl.h>
 #include <wtf/text/SymbolRegistry.h>
+#include <wtf/text/UniquedStringImpl.h>
 
 #if ENABLE(REGEXP_TRACING)
 #include <wtf/ListHashSet.h>
@@ -222,7 +225,7 @@ enum VMIdentifierType { };
 using VMIdentifier = AtomicObjectIdentifier<VMIdentifierType>;
 
 class VM : public ThreadSafeRefCountedWithSuppressingSaferCPPChecking<VM>, public DoublyLinkedListNode<VM> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(VM);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(VM, VM);
 public:
     // WebCore has a one-to-one mapping of threads to VMs;
     // create() should only be called once
@@ -376,7 +379,7 @@ private:
 
     VMIdentifier m_identifier;
     const Ref<JSLock> m_apiLock;
-    Ref<WTF::RunLoop> m_runLoop;
+    const Ref<WTF::RunLoop> m_runLoop;
 
     WeakRandom m_random;
     WeakRandom m_heapRandom;
@@ -541,21 +544,21 @@ public:
 
     JSCell* orderedHashTableDeletedValue()
     {
-        if (LIKELY(m_orderedHashTableDeletedValue))
+        if (m_orderedHashTableDeletedValue) [[likely]]
             return m_orderedHashTableDeletedValue.get();
         return orderedHashTableDeletedValueSlow();
     }
 
     JSCell* orderedHashTableSentinel()
     {
-        if (LIKELY(m_orderedHashTableSentinel))
+        if (m_orderedHashTableSentinel) [[likely]]
             return m_orderedHashTableSentinel.get();
         return orderedHashTableSentinelSlow();
     }
 
     JSPropertyNameEnumerator* emptyPropertyNameEnumerator()
     {
-        if (LIKELY(m_emptyPropertyNameEnumerator))
+        if (m_emptyPropertyNameEnumerator) [[likely]]
             return m_emptyPropertyNameEnumerator.get();
         return emptyPropertyNameEnumeratorSlow();
     }
@@ -626,7 +629,7 @@ public:
     NativeExecutable* getHostFunction(NativeFunction, ImplementationVisibility, NativeFunction constructor, const String& name);
     NativeExecutable* getHostFunction(NativeFunction, ImplementationVisibility, Intrinsic, NativeFunction constructor, const DOMJIT::Signature*, const String& name);
 
-    NativeExecutable* getBoundFunction(bool isJSFunction);
+    NativeExecutable* getBoundFunction(bool isJSFunction, SourceTaintedOrigin taintedness);
     NativeExecutable* getRemoteFunction(bool isJSFunction);
 
     CodePtr<JSEntryPtrTag> getCTIInternalFunctionTrampolineFor(CodeSpecializationKind);
@@ -784,7 +787,7 @@ public:
     static constexpr size_t patternContextBufferSize = 0; // Space allocated to save nested parenthesis context
 #endif
 
-    Ref<CompactTDZEnvironmentMap> m_compactVariableMap;
+    const Ref<CompactTDZEnvironmentMap> m_compactVariableMap;
 
     LazyUniqueRef<VM, HasOwnPropertyCache> m_hasOwnPropertyCache;
     ALWAYS_INLINE HasOwnPropertyCache* hasOwnPropertyCache() { return m_hasOwnPropertyCache.getIfExists(); }
@@ -1104,7 +1107,7 @@ private:
     UncheckedKeyHashMap<const JSInstruction*, std::pair<unsigned, std::unique_ptr<uintptr_t>>> m_loopHintExecutionCounts;
 
     MicrotaskQueue m_defaultMicrotaskQueue;
-    Ref<Waiter> m_syncWaiter;
+    const Ref<Waiter> m_syncWaiter;
 
     std::atomic<int64_t> m_numberOfActiveJITPlans { 0 };
 
@@ -1165,7 +1168,7 @@ namespace WTF {
 template<> struct DefaultRefDerefTraits<JSC::VM> {
     static ALWAYS_INLINE JSC::VM* refIfNotNull(JSC::VM* ptr)
     {
-        if (LIKELY(ptr))
+        if (ptr) [[likely]]
             ptr->refSuppressingSaferCPPChecking();
         return ptr;
     }
@@ -1178,7 +1181,7 @@ template<> struct DefaultRefDerefTraits<JSC::VM> {
 
     static ALWAYS_INLINE void derefIfNotNull(JSC::VM* ptr)
     {
-        if (LIKELY(ptr))
+        if (ptr) [[likely]]
             ptr->derefSuppressingSaferCPPChecking();
     }
 };

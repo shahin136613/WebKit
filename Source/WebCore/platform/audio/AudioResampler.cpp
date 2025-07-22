@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, Google Inc. All rights reserved.
+ * Copyright (C) 2010 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -62,13 +62,13 @@ void AudioResampler::configureChannels(unsigned numberOfChannels)
         for (unsigned i = currentSize; i < numberOfChannels; ++i)
             m_kernels.append(makeUnique<AudioResamplerKernel>(this));
     } else
-        m_kernels.resize(numberOfChannels);
+        m_kernels.shrink(numberOfChannels);
 
     // Reconfigure our source bus to the new channel size.
     m_sourceBus = AudioBus::create(numberOfChannels, 0, false);
 }
 
-void AudioResampler::process(AudioSourceProvider* provider, AudioBus* destinationBus, size_t framesToProcess)
+void AudioResampler::process(AudioSourceProvider* provider, AudioBus& destinationBus, size_t framesToProcess)
 {
     ASSERT(provider);
     if (!provider)
@@ -77,12 +77,13 @@ void AudioResampler::process(AudioSourceProvider* provider, AudioBus* destinatio
     unsigned numberOfChannels = m_kernels.size();
 
     // Make sure our configuration matches the bus we're rendering to.
-    bool channelsMatch = (destinationBus && destinationBus->numberOfChannels() == numberOfChannels);
+    bool channelsMatch = (destinationBus.numberOfChannels() == numberOfChannels);
     ASSERT(channelsMatch);
     if (!channelsMatch)
         return;
 
-    RefPtr sourceBus = m_sourceBus;
+    Ref sourceBus = m_sourceBus;
+
     // Setup the source bus.
     for (unsigned i = 0; i < numberOfChannels; ++i) {
         // Figure out how many frames we need to get from the provider, and a pointer to the buffer.
@@ -96,12 +97,12 @@ void AudioResampler::process(AudioSourceProvider* provider, AudioBus* destinatio
     }
 
     // Ask the provider to supply the desired number of source frames.
-    provider->provideInput(sourceBus.get(), sourceBus->length());
+    provider->provideInput(sourceBus, sourceBus->length());
 
     // Now that we have the source data, resample each channel into the destination bus.
     // FIXME: optimize for the common stereo case where it's faster to process both left/right channels in the same inner loop.
     for (unsigned i = 0; i < numberOfChannels; ++i) {
-        auto destination = destinationBus->channel(i)->mutableSpan();
+        auto destination = destinationBus.channel(i)->mutableSpan();
         m_kernels[i]->process(destination, framesToProcess);
     }
 }

@@ -54,6 +54,9 @@ imported/w3c/web-platform-tests/webcodecs [ Skip ]
 # Features not supported in WebKit1
 #//////////////////////////////////////////////////////////////////////////////////////////
 
+# Below test not suppored because it uses navigator.locks.query()
+fast/css/vertical-align-rem-on-root.html [ Skip ]
+
 fast/css-custom-paint [ Skip ]
 imported/w3c/web-platform-tests/css/css-properties-values-api/ [ Skip ]
 css-custom-properties-api [ Skip ]
@@ -63,6 +66,7 @@ css-dark-mode [ Skip ]
 media/audioSession [ Skip ]
 
 http/wpt/mediasession [ Skip ]
+imported/w3c/web-platform-tests/mediasession/media-session-artwork-fetch.https.html [ Skip ]
 
 # Media Stream API testing is not supported for WK1 yet.
 fast/mediastream
@@ -108,6 +112,10 @@ imported/w3c/web-platform-tests/screen-orientation [ Skip ]
 # WPT Fetch has a large number of failures on WK1. Skip them all for now
 # webkit.org/b/247981
 imported/w3c/web-platform-tests/fetch [ Skip ]
+
+# The Digital Credentials API is not supported in WebKit1.
+http/wpt/identity/ [ Skip ]
+imported/w3c/web-platform-tests/digital-credentials/ [ Skip ]
 
 # Shared & service workers are only implemented for WebKit2.
 http/tests/navigation/page-cache-shared-worker.html [ Skip ]
@@ -862,6 +870,7 @@ webkit.org/b/246719 imported/w3c/web-platform-tests/reporting/cross-origin-repor
 
 # Reports are not being sent, potentially due to issues with WebKitLegacy and https-based WPT
 webkit.org/b/285098 imported/w3c/web-platform-tests/content-security-policy/report-hash/ [ Failure ]
+webkit.org/b/285098 imported/w3c/web-platform-tests/subresource-integrity/integrity-policy/script.https.html [ Failure ]
 
 # WebKitLegacy is flaky on reporting API
 webkit.org/b/246350 imported/w3c/web-platform-tests/content-security-policy/reporting-api/reporting-api-sends-reports-on-violation.https.sub.html [ Pass Failure ]
@@ -900,6 +909,8 @@ accessibility/mac/clipped-radio-input-frame.html [ WontFix ]
 
 accessibility/range-input-increment-decrement-fires-input-event.html [ WontFix ]
 
+accessibility/mac/stale-input-value-from-subfield-change.html [ WontFix ]
+
 # Default ARIA for custom elements are not yet enabled
 accessibility/custom-elements/ [ Skip ]
 
@@ -908,6 +919,9 @@ accessibility/mac/dynamic-drag.html [ Skip ]
 accessibility/display-contents/role-row-headers.html [ Skip ]
 
 accessibility/mac/text-marker-from-typing-notification.html [ Skip ]
+
+accessibility/opacity-0-bounding-box.html [ WontFix ]
+accessibility/clip-path-bounding-box.html [ WontFix ]
 
 # Missing AccessibilityUIElement::dateTimeValue() implementation.
 accessibility/dynamic-datetime-attribute.html [ Skip ]
@@ -946,8 +960,14 @@ accessibility/display-contents/aria-owns.html [ Skip ]
 accessibility/mac/text-field-number-of-characters.html [ Skip ]
 accessibility/mac/content-editable-attributed-string.html [ Skip ]
 accessibility/mac/lazy-spellchecking.html [ Skip ]
+accessibility/mac/editable-page-lazy-spellchecking.html [ Skip ]
+accessibility/mac/designmode-lazy-spellchecking.html [ Skip ]
 accessibility/mac/spellcheck-with-voiceover.html [ Skip ]
 accessibility/text-marker/text-marker-range-with-unordered-markers.html
+accessibility/mac/line-boundary-at-br.html [ Skip ]
+accessibility/mac/text-marker-ordering.html [ Skip ]
+
+accessibility/mac/bounds-for-range-multibyte-glyphs.html [ Skip ]
 
 accessibility/aria-controlled-table-row-visibility.html [ Skip ]
 
@@ -959,6 +979,9 @@ accessibility/mac/intersection-with-selection-range.html [ Skip ]
 
 # Skipping because AccessibilityUIElement::columns() is not supported on WK1.
 accessibility/dynamic-table-row-column-indices.html [ Skip ]
+
+# Skipping because AccessibilityUIElement::boundsForRangeWithPagePosition() is not supported on WK1.
+accessibility/mac/bounds-for-range-centered.html [ Skip ]
 
 # DOM paste access requests are not implemented in WebKit1.
 editing/async-clipboard/clipboard-change-data-while-reading.html [ Skip ]
@@ -1027,6 +1050,7 @@ webkit.org/b/156069 imported/w3c/web-platform-tests/html/semantics/text-level-se
 webkit.org/b/156069 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-area-element/area-download-click.html [ Skip ]
 webkit.org/b/156069 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-iframe-element/iframe_sandbox_anchor_download_allow_downloads.tentative.html [ Skip ]
 webkit.org/b/156069 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-iframe-element/iframe_sandbox_anchor_download_block_downloads.tentative.html [ Skip ]
+webkit.org/b/156069 http/tests/download/iframe-usdz-download.html [ Skip ]
 
 # no support for waitUntilDownloadFinished on WK1.
 http/tests/download/anchor-download-redirect-same-origin-top-level.html [ Skip ]
@@ -1045,6 +1069,7 @@ http/tests/local/blob/navigate-blob.html [ Skip ]
 media/no-fullscreen-when-hidden.html [ Skip ]
 fullscreen/full-screen-enter-while-exiting-fully-mid-completion-handler.html [ Skip ]
 fullscreen/full-screen-enter-while-exiting-mid-completion-handler.html [ Skip ]
+fullscreen/fullscreen-zero-height-element-with-non-zero-children.html [ Skip ]
 
 # Multi-process test
 fullscreen/iframe-fullscreen-system-exit.html [ Skip ]
@@ -1130,6 +1155,12 @@ imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/not-rendered-image-loading-lazy.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/picture-loading-lazy.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/remove-element-and-scroll.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/image-loading-lazy-in-scroller.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/image-loading-lazy-in-scroller-nested.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/image-loading-lazy-in-scroller-nested-3.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/image-loading-lazy-in-scroller-nested-4.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/image-loading-lazy-in-scroller-nested-5.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/embedded-content/the-img-element/animated-image-update.tentative.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-base-url-2.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-base-url.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-load-event.html [ Skip ]
@@ -1154,6 +1185,8 @@ fast/forms/color [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/forms/the-input-element/color-attributes.window.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/forms/the-input-element/color.tentative.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/forms/the-input-element/color.window.html [ Skip ]
+imported/w3c/web-platform-tests/html/semantics/forms/the-input-element/range-tick-marks-01.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/html/semantics/forms/the-input-element/range-tick-marks-03.html [ ImageOnlyFailure ]
 
 # Audio session and media session manager are a singletons
 platform/mac/media/media-source/media-source-change-source.html [ Skip ]
@@ -1169,10 +1202,12 @@ media/media-vp8-webm-error.html [ Failure ]
 media/media-vp8-webm-error-offscreen.html [ Failure ]
 media/media-vp8-webm.html [ Skip ]
 media/media-vp8-webm-seek-to-start.html [ Skip ]
+media/media-vp8-webm-with-blob.html [ Skip ]
 media/media-vp8-webm-with-poster.html [ Skip ]
 media/media-vp8-webm-with-preload.html [ Skip ]
 media/media-vp9-dar-webm.html [ Skip ]
 media/media-vp9-sar-webm.html [ Skip ]
+media/media-vp9-yuv422p10.html [ Skip ]
 media/video-src-webm-blob.html [ Failure ]
 media/track/audio-track-configuration-webm.html [ Skip ]
 media/track/media-audio-track.html [ Failure ]
@@ -1213,6 +1248,8 @@ imported/w3c/web-platform-tests/cookie-store [ Skip ]
 imported/w3c/web-platform-tests/cookies/partitioned-cookies/partitioned-cookies.tentative.https.html [ Skip ]
 http/tests/cookies/cookie-store-get-secure.https.html [ Skip ]
 http/tests/cookies/cookie-store-set-secure.https.html [ Skip ]
+cookies/cookie-store-register-eventlistener-from-file-protocol.html [ Skip ]
+cookies/cookie-store-start-listening-for-change-with-null-url-crash.html [ Skip ]
 
 # View Transitions API is disabled in WK1.
 imported/w3c/web-platform-tests/css/css-view-transitions [ Skip ]
@@ -1229,8 +1266,16 @@ accessibility/mac/text-operation/text-operation-select.html [ Skip ]
 accessibility/mac/text-operation/text-operation-smart-replace.html [ Skip ]
 accessibility/mac/text-operation/text-operation-uppercase.html [ Skip ]
 
+# Missing text marker API implementations for WK1.
+accessibility/mac/editable-single-letter-soft-linebreak-lines.html [ Skip ]
+accessibility/mac/line-range-in-contenteditable.html [ Skip ]
+
 # Skipping because AXTextMarkerRangeIsValid is not supported on WK1.
+accessibility/mac/attributed-string-with-image.html [ Skip ]
+accessibility/mac/br-element-properties.html [ Skip ]
+accessibility/mac/br-element-text-selection.html [ Skip ]
 accessibility/mac/dynamic-selection.html [ Skip ]
+accessibility/mac/replaced-element-text-selection.html [ Skip ]
 
 #//////////////////////////////////////////////////////////////////////////////////////////
 # End features not supported in WebKit1
@@ -1737,6 +1782,8 @@ fast/events/wheel/wheel-event-in-passive-region-non-cancelable.html [ Skip ]
 # WK1 main frame scrollbars are native widgets whose size is unaffected by webkit-scrollbar.
 fast/visual-viewport/viewport-dimensions-exclude-custom-scrollbars.html [ Skip ]
 
+imported/w3c/web-platform-tests/visual-viewport/viewport-apply-initial-scale-after-navigation.html [ ImageOnlyFailure ]
+
 imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_no_argument.html [ Pass Failure ]
 imported/w3c/web-platform-tests/html/browsers/history/the-history-interface/history_go_to_uri.html [ Pass Failure ]
 
@@ -1756,6 +1803,11 @@ http/tests/download/convert-cached-load-to-download.html [ Skip ]
 
 # Can't load application/octet-stream in WK1
 http/tests/mime/html-with-nosniff-html.html [ Skip ]
+
+# testRunner.findString function is WK2-only, not implemented for WK1.
+editing/text-iterator/find-in-page-in-hidden-until-found.html [ Skip ]
+editing/text-iterator/find-in-page-in-closed-details.html [ Skip ]
+editing/text-iterator/find-in-page-in-summary-of-closed-details.html [ Skip ]
 
 # dumpPolicyDelegateCallbacks is not supported in DumpRenderTree
 fast/loader/iframe-src-invalid-url.html [ Skip ]
@@ -1784,6 +1836,7 @@ accessibility/mac/position-fixed-top-bottom-properties-relative-frame.html [ Ski
 accessibility/mac/shadow-dom-relative-frame.html [ Skip ]
 accessibility/mac/svg-relative-frame.html [ Skip ]
 accessibility/mac/table-relative-frame.html [ Skip ]
+accessibility/mac/visible-character-range-width-changes.html [ Skip ]
 
 # Skip due to lack of DumpRenderTree `AccessibilityUIElement::stringDescriptionOfAttributeValue` implementation.
 accessibility/mixed-contenteditable-visible-character-range-hang.html [ Skip ]
@@ -1792,7 +1845,6 @@ accessibility/visible-character-range-basic.html [ Skip ]
 accessibility/visible-character-range-height-changes.html [ Skip ]
 accessibility/visible-character-range-scrolling.html [ Skip ]
 accessibility/visible-character-range-vertical-rl.html [ Skip ]
-accessibility/visible-character-range-width-changes.html [ Skip ]
 accessibility/aria-description.html [ Skip ]
 
 # Missing AccessibilityUIElement::focusableAncestor implementation.
@@ -1906,6 +1958,8 @@ fast/html/details-remove-summary-6-and-click.html [ Pass Failure ]
 
 webkit.org/b/165541 compositing/layer-creation/fixed-overlap-extent-rtl.html [ Failure ]
 webkit.org/b/165541 compositing/rtl/rtl-fixed-overflow.html [ Failure ]
+
+compositing/layer-creation/sticky-overlap-extent.html
 
 webkit.org/b/154612 compositing/repaint/fixed-background-scroll.html [ Pass Failure ]
 
@@ -2461,7 +2515,6 @@ imported/w3c/web-platform-tests/pointerevents/pointerevent_capture_mouse.html [ 
 imported/w3c/web-platform-tests/pointerevents/pointerevent_click_during_capture.html [ Pass Failure ]
 imported/w3c/web-platform-tests/pointerevents/pointerevent_element_haspointercapture.html [ Pass Failure ]
 imported/w3c/web-platform-tests/pointerevents/pointerevent_mouse_capture_change_hover.html [ Pass Failure ]
-imported/w3c/web-platform-tests/pointerevents/pointerevent_mouse_pointercapture_in_frame.html [ Pass Failure ]
 imported/w3c/web-platform-tests/pointerevents/pointerevent_pointercapture-in-custom-element.html [ Pass Failure ]
 
 webkit.org/b/236128 fullscreen/full-screen-iframe-with-max-width-height.html [ Skip ]
@@ -2774,6 +2827,8 @@ imported/w3c/web-platform-tests/css/motion/offset-path-shape-polygon-003.html [ 
 imported/w3c/web-platform-tests/css/css-masking/clip-path/animations/clip-path-animation-custom-timing-function.html [ ImageOnlyFailure ]
 imported/w3c/web-platform-tests/html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.w.html [ Pass Failure ]
 
+webkit.org/b/290442 imported/w3c/web-platform-tests/html/canvas/offscreen/manual/text/canvas.2d.fillText.html [ ImageOnlyFailure ]
+
 webkit.org/b/261427 media/track/track-in-band-mode.html [ Pass Crash ]
 
 webkit.org/b/261618 [ Debug ] imported/w3c/web-platform-tests/preload/link-header-preload-non-html.html [ Pass Crash ]
@@ -2822,7 +2877,6 @@ imported/w3c/web-platform-tests/dom/events/non-cancelable-when-passive/non-passi
 imported/w3c/web-platform-tests/dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-div.html [ Skip ]
 imported/w3c/web-platform-tests/dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-div.html [ Skip ]
 imported/w3c/web-platform-tests/dom/events/scrolling/iframe-chains.html [ Skip ]
-imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-for-user-scroll.html [ Skip ]
 imported/w3c/web-platform-tests/html/semantics/popovers/popover-light-dismiss-scroll-within.html [ Skip ]
 imported/w3c/web-platform-tests/pointerevents/pointerevent_touch-action-mouse.html [ Skip ]
 
@@ -2855,10 +2909,6 @@ webkit.org/b/270310 [ Sonoma+ ] imported/w3c/web-platform-tests/html/semantics/i
 [ Sonoma+ ] imported/w3c/web-platform-tests/css/css-transforms/ttwf-css-3d-polygon-cycle.html [ ImageOnlyFailure ]
 
 webkit.org/b/270385 [ Sonoma+ ] fast/images/jpegxl-with-color-profile.html [ ImageOnlyFailure ]
-
-# webkit.org/b/270199 [ MacOS WK1 Debug ] fast/frames/lots-of-iframes.html and fast/frames/lots-of-objects.html are consistent/flaky timeouts
-[ Debug ] fast/frames/lots-of-iframes.html [ Pass Timeout ]
-[ Debug ] fast/frames/lots-of-objects.html [ Pass Timeout ]
 
 webkit.org/b/271423 [ Sonoma+ arm64 ] imported/w3c/web-platform-tests/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html [ Failure ]
 webkit.org/b/271423 [ Sonoma+ arm64 ] imported/w3c/web-platform-tests/html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation_none.html [ Failure ]
@@ -2984,10 +3034,11 @@ webkit.org/b/281594 imported/w3c/web-platform-tests/html/semantics/document-meta
 [ Sequoia+ ] http/tests/cookies/same-site/fetch-after-navigating-iframe-in-cross-origin-page.html [ Failure ]
 [ Sequoia+ ] http/tests/cookies/same-site/popup-cross-site-post.html [ Failure ]
 
-webkit.org/b/283013 [ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/predefined-011.html [ ImageOnlyFailure ]
-webkit.org/b/283013 [ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/predefined-012.html [ ImageOnlyFailure ]
-webkit.org/b/283013 [ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/rec2020-001.html [ ImageOnlyFailure ]
-webkit.org/b/283013 [ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/relative-currentcolor-rec2020-01.html [ ImageOnlyFailure ]
+# webkit.org/b/283013 (REGRESSION (Sequoia): [ Sequoia wk1 ] 4 WPT tests in css/css-color/*. html are a consistent image failure)
+[ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/predefined-011.html [ Skip ]
+[ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/predefined-012.html [ Skip ]
+[ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/rec2020-001.html [ Skip ]
+[ Sequoia+ ] imported/w3c/web-platform-tests/css/css-color/relative-currentcolor-rec2020-01.html [ Skip ]
 
 # Skipping as this test was added for a fix only intended for WK2.
 webkit.org/b/284068 [ Sequoia+ ] http/tests/download/anchor-download-redirect-cross-origin.html [ Skip ]
@@ -3021,8 +3072,6 @@ webkit.org/b/255555 imported/w3c/web-platform-tests/xhr/request-content-length.a
 
 webkit.org/b/287713 printing/background-clip-text.html [ Skip ]
 
-webkit.org/b/287833 [ Release arm64 ] imported/w3c/web-platform-tests/css/css-masking/clip-path/animations/clip-path-animation-font-size-mixed-change.html [ Pass ImageOnlyFailure ]
-
 webkit.org/b/287902 imported/w3c/web-platform-tests/css/css-grid/alignment/self-baseline/grid-self-baseline-changes-grid-area-size-012.html [ Pass ImageOnlyFailure ]
 
 webkit.org/b/287914 imported/w3c/web-platform-tests/html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-parse-error-external-classic.html [ Pass Failure ]
@@ -3039,6 +3088,43 @@ webkit.org/b/288627 editing/spelling/spellcheck-async-mutation.html [ Timeout ]
 
 webkit.org/b/288725 http/tests/security/file-system-access-via-dataTransfer.html [ Pass Failure ]
 
+# `scrollend` events are not supported on WK1
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-after-snap.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-to-document.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-to-element-with-overscroll-behavior.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-to-window.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fires-to-iframe-window.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-handler-content-attributes.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-fires-to-text-input.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=root-scrollBy-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=root-scrollBy-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=root-scrollTo-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=root-scrollTo-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=subframe-scrollBy-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=subframe-scrollBy-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=subframe-scrollTo-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html?include=subframe-scrollTo-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=root-scrollLeft-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=root-scrollLeft-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=root-scrollTop-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=root-scrollTop-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=subframe-scrollLeft-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=subframe-scrollLeft-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=subframe-scrollTop-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html?include=subframe-scrollTop-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html?include=nested-scrollIntoView [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html?include=root-inline-end-block-end-behavior-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html?include=root-inline-start-block-start-behavior-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html?include=subframe-inline-end-block-end-behavior-auto [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html?include=subframe-inline-start-block-start-behavior-smooth [ Skip ]
+webkit.org/b/201556 imported/w3c/web-platform-tests/dom/events/scrolling/scrollend-event-for-user-scroll.html [ Skip ]
+
 webkit.org/b/288769 fast/ruby/after-block-doesnt-crash.html [ Failure Pass ]
 webkit.org/b/288769 fast/ruby/after-table-doesnt-crash.html [ Failure Pass ]
 webkit.org/b/288769 fast/ruby/before-block-doesnt-crash.html [ Failure Pass ]
@@ -3050,8 +3136,6 @@ webkit.org/b/288757 [ Sonoma ] imported/w3c/web-platform-tests/fullscreen/render
 webkit.org/b/288757 [ Sequoia Release ] imported/w3c/web-platform-tests/fullscreen/rendering/fullscreen-css-invalidation.html [ Pass Failure ]
 
 webkit.org/b/288827 http/wpt/webaudio/audioworklet-addModule-cors.sub.https.html [ Failure ]
-
-webkit.org/b/288831 [ Debug ] fast/css/shadow-box-recursion-depth.html [ Pass Timeout ]
 
 webkit.org/b/288843 [ Release ] compositing/repaint/iframes/compositing-iframe-scroll-repaint.html [ Pass Failure ]
 
@@ -3078,3 +3162,46 @@ webkit.org/b/289369 fast/workers/dedicated-worker-lifecycle.html [ Pass Timeout 
 webkit.org/b/289612 http/tests/navigation/https-in-page-cache.html [ Pass Timeout ]
 
 imported/w3c/web-platform-tests/css/css-position/sticky/position-sticky-escape-scroller-004.html [ ImageOnlyFailure ]
+
+[ Sonoma ] fast/encoding/idn-security.html [ Failure ]
+[ Sequoia ] fast/encoding/idn-security.html [ Pass Failure ]
+
+webkit.org/b/291207 fullscreen/full-screen-document-background-color.html [ Pass Failure ]
+
+webkit.org/b/132766 fast/hidpi/filters-reference.html [ ImageOnlyFailure ]
+
+# webkit.org/b/292214 REGRESSION(293890@main): [macOS wk1] Two tests are constant failures in imported/w3c/web-platform-tests/svg/painting with image diff (flaky in EWS)
+imported/w3c/web-platform-tests/svg/painting/marker-005.svg [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/svg/painting/marker-006.svg [ ImageOnlyFailure ]
+
+webkit.org/b/292218 [ Sonoma Release ] media/media-source/media-source-video-renders.html [ Pass ImageOnlyFailure Timeout ]
+
+http/tests/iframe-memory-monitor/media-video-autoplay-in-frames.html [ Skip ]
+
+# webkit.org/b/293249 third-party cookie blocking is not supported in WK1
+http/tests/navigation/ping-attribute/cross-site-url-anchor-cookie-preexisting-cookie.html [ Skip ]
+http/tests/navigation/ping-attribute/cross-site-url-anchor-cookie.html [ Skip ]
+http/tests/websocket/tests/hybi/websocket-allowed-setting-cookie-as-third-party-with-third-party-cookie-blocking.https.html [ Skip ]
+
+webkit.org/b/294301 http/tests/media/hls/hls-audio-tracks-language.html [ Pass Failure ]
+
+http/tests/lockdown-mode [ Skip ]
+
+imported/w3c/web-platform-tests/css/css-transforms/individual-transform/individual-transform-3.html [ ImageOnlyFailure ]
+imported/w3c/web-platform-tests/css/css-images/gradient/conic-gradient-001.html [ ImageOnlyFailure ]
+
+webkit.org/b/295119  imported/w3c/web-platform-tests/css/css-fonts/font-size-adjust-text-orientation.html [ Pass ImageOnlyFailure ]
+
+# # FIXME: Needs bug.
+# fast/forms/indeterminate-progress-inline-height.html [ Failure ]
+# fast/forms/range/slider-mouse-events.html [ Failure ]
+# fast/forms/search/search-zoom-computed-style-height.html [ Failure ]
+# fast/forms/text-control-intrinsic-widths.html [ Failure ]
+# fast/repaint/checkbox-overflow-vertical-rl.html [ Failure ]
+# imported/w3c/web-platform-tests/css/css-color/system-color-consistency.html [ Failure ]
+# imported/w3c/web-platform-tests/html/rendering/widgets/field-sizing-input-number.html [ Failure ]
+# platform/mac/fast/text/line-break-locale.html [ Failure ]
+# fast/forms/appearance-default-button.html [ ImageOnlyFailure ]
+
+# setSinkId is not enabled on WK1
+media/video-setSinkId-default.html [ Skip ]

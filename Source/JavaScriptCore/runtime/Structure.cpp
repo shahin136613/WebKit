@@ -82,7 +82,7 @@ void StructureTransitionTable::add(VM& vm, JSCell* owner, Structure* structure)
     }
 
     // Add the structure to the map.
-    map()->set(StructureTransitionTable::Hash::createFromStructure(structure), structure);
+    map()->set(StructureTransitionTable::Hash::createKeyFromStructure(structure), structure);
 }
 
 void Structure::dumpStatistics()
@@ -302,7 +302,6 @@ Structure::Structure(VM& vm, StructureVariant variant, Structure* previous)
     , m_classInfo(previous->m_classInfo)
     , m_transitionWatchpointSet(IsWatched)
 {
-    ASSERT(this->variant() != StructureVariant::WebAssemblyGC);
     setDictionaryKind(previous->dictionaryKind());
     setIsPinnedPropertyTable(false);
     setHasBeenFlattenedBefore(previous->hasBeenFlattenedBefore());
@@ -349,25 +348,27 @@ Structure::Structure(VM& vm, StructureVariant variant, Structure* previous)
 #endif
 }
 
-Structure::~Structure()
-{
-    if (typeInfo().structureIsImmortal())
-        return;
-
-    if (isBrandedStructure())
-        static_cast<BrandedStructure*>(this)->destruct();
-
-#if ENABLE(WEBASSEMBLY)
-    if (variant() == StructureVariant::WebAssemblyGC)
-        static_cast<WebAssemblyGCStructure*>(this)->destruct();
-#else
-    ASSERT(variant() != StructureVariant::WebAssemblyGC);
-#endif
-}
+Structure::~Structure() = default;
 
 void Structure::destroy(JSCell* cell)
 {
-    static_cast<Structure*>(cell)->Structure::~Structure();
+    auto* structure = static_cast<Structure*>(cell);
+    switch (structure->variant()) {
+    case StructureVariant::Normal:
+        structure->Structure::~Structure();
+        break;
+    case StructureVariant::Branded:
+        static_cast<BrandedStructure*>(structure)->BrandedStructure::~BrandedStructure();
+        break;
+    case StructureVariant::WebAssemblyGC:
+#if ENABLE(WEBASSEMBLY)
+        static_cast<WebAssemblyGCStructure*>(structure)->WebAssemblyGCStructure::~WebAssemblyGCStructure();
+#endif
+        break;
+    default:
+        RELEASE_ASSERT_NOT_REACHED();
+        break;
+    }
 }
 
 Structure* Structure::create(PolyProtoTag, VM& vm, JSGlobalObject* globalObject, JSObject* prototype, const TypeInfo& typeInfo, const ClassInfo* classInfo, IndexingType indexingType, unsigned inlineCapacity)

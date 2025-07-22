@@ -8,7 +8,7 @@
     Copyright (C) 2000-2003 Lars Knoll (knoll@kde.org)
               (C) 2000 Antti Koivisto (koivisto@kde.org)
               (C) 2000-2003 Dirk Mueller (mueller@kde.org)
-              (C) 2002-2003 Apple Inc.
+              (C) 2002-2003 Apple Inc. All rights reserved.
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -30,9 +30,12 @@
 
 #include "Length.h"
 #include "SVGLengthValue.h"
-#include "ShadowData.h"
+#include "StyleBoxShadow.h"
 #include "StyleColor.h"
 #include "StylePathData.h"
+#include "StyleSVGPaint.h"
+#include "StyleURL.h"
+#include <wtf/FixedVector.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 
@@ -44,17 +47,6 @@ namespace WebCore {
 
 class CSSValue;
 class CSSValueList;
-class SVGPaint;
-
-enum class SVGPaintType : uint8_t {
-    RGBColor,
-    None,
-    CurrentColor,
-    URINone,
-    URICurrentColor,
-    URIRGBColor,
-    URI
-};
 
 enum class BaselineShift : uint8_t {
     Baseline,
@@ -144,7 +136,7 @@ enum class MaskType : uint8_t {
 // Inherited/Non-Inherited Style Datastructures
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleFillData);
 class StyleFillData : public RefCounted<StyleFillData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleFillData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleFillData, StyleFillData);
 public:
     static Ref<StyleFillData> create() { return adoptRef(*new StyleFillData); }
     Ref<StyleFillData> copy() const;
@@ -156,12 +148,8 @@ public:
 #endif
 
     float opacity;
-    Style::Color paintColor;
-    Style::Color visitedLinkPaintColor;
-    String paintUri;
-    String visitedLinkPaintUri;
-    SVGPaintType paintType;
-    SVGPaintType visitedLinkPaintType;
+    Style::SVGPaint paint;
+    Style::SVGPaint visitedLinkPaint;
 
 private:
     StyleFillData();
@@ -170,7 +158,7 @@ private:
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleStrokeData);
 class StyleStrokeData : public RefCounted<StyleStrokeData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleStrokeData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleStrokeData, StyleStrokeData);
 public:
     static Ref<StyleStrokeData> create() { return adoptRef(*new StyleStrokeData); }
     Ref<StyleStrokeData> copy() const;
@@ -182,18 +170,10 @@ public:
 #endif
 
     float opacity;
-
-    Style::Color paintColor;
-    Style::Color visitedLinkPaintColor;
-
-    String paintUri;
-    String visitedLinkPaintUri;
-
+    Style::SVGPaint paint;
+    Style::SVGPaint visitedLinkPaint;
     Length dashOffset;
-    Vector<SVGLengthValue> dashArray;
-
-    SVGPaintType paintType;
-    SVGPaintType visitedLinkPaintType;
+    FixedVector<Length> dashArray;
 
 private:
     StyleStrokeData();
@@ -202,7 +182,7 @@ private:
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleStopData);
 class StyleStopData : public RefCounted<StyleStopData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleStopData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleStopData, StyleStopData);
 public:
     static Ref<StyleStopData> create() { return adoptRef(*new StyleStopData); }
     Ref<StyleStopData> copy() const;
@@ -224,7 +204,7 @@ private:
 // Note: the rule for this class is, *no inheritance* of these props
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleMiscData);
 class StyleMiscData : public RefCounted<StyleMiscData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleMiscData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleMiscData, StyleMiscData);
 public:
     static Ref<StyleMiscData> create() { return adoptRef(*new StyleMiscData); }
     Ref<StyleMiscData> copy() const;
@@ -239,7 +219,7 @@ public:
     Style::Color floodColor;
     Style::Color lightingColor;
 
-    SVGLengthValue baselineShiftValue;
+    Length baselineShiftValue;
 
 private:
     StyleMiscData();
@@ -248,7 +228,7 @@ private:
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleShadowSVGData);
 class StyleShadowSVGData : public RefCounted<StyleShadowSVGData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleShadowSVGData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleShadowSVGData, StyleShadowSVGData);
 public:
     static Ref<StyleShadowSVGData> create() { return adoptRef(*new StyleShadowSVGData); }
     Ref<StyleShadowSVGData> copy() const;
@@ -259,7 +239,7 @@ public:
     void dumpDifferences(TextStream&, const StyleShadowSVGData&) const;
 #endif
 
-    std::unique_ptr<ShadowData> shadow;
+    Style::BoxShadows shadow;
 
 private:
     StyleShadowSVGData();
@@ -269,7 +249,7 @@ private:
 // Inherited resources
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleInheritedResourceData);
 class StyleInheritedResourceData : public RefCounted<StyleInheritedResourceData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleInheritedResourceData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleInheritedResourceData, StyleInheritedResourceData);
 public:
     static Ref<StyleInheritedResourceData> create() { return adoptRef(*new StyleInheritedResourceData); }
     Ref<StyleInheritedResourceData> copy() const;
@@ -280,9 +260,9 @@ public:
     void dumpDifferences(TextStream&, const StyleInheritedResourceData&) const;
 #endif
 
-    String markerStart;
-    String markerMid;
-    String markerEnd;
+    Style::URL markerStart;
+    Style::URL markerMid;
+    Style::URL markerEnd;
 
 private:
     StyleInheritedResourceData();
@@ -292,7 +272,7 @@ private:
 // Positioning and sizing properties.
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StyleLayoutData);
 class StyleLayoutData : public RefCounted<StyleLayoutData> {
-    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleLayoutData);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(StyleLayoutData, StyleLayoutData);
 public:
     static Ref<StyleLayoutData> create() { return adoptRef(*new StyleLayoutData); }
     Ref<StyleLayoutData> copy() const;
@@ -326,7 +306,6 @@ WTF::TextStream& operator<<(WTF::TextStream&, ColorRendering);
 WTF::TextStream& operator<<(WTF::TextStream&, DominantBaseline);
 WTF::TextStream& operator<<(WTF::TextStream&, GlyphOrientation);
 WTF::TextStream& operator<<(WTF::TextStream&, MaskType);
-WTF::TextStream& operator<<(WTF::TextStream&, SVGPaintType);
 WTF::TextStream& operator<<(WTF::TextStream&, ShapeRendering);
 WTF::TextStream& operator<<(WTF::TextStream&, TextAnchor);
 WTF::TextStream& operator<<(WTF::TextStream&, VectorEffect);

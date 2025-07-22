@@ -173,9 +173,9 @@ public:
 #endif
 };
 
-UncheckedKeyHashSet<Thread*>& Thread::allThreads()
+HashSet<Thread*>& Thread::allThreads()
 {
-    static LazyNeverDestroyed<UncheckedKeyHashSet<Thread*>> allThreads;
+    static LazyNeverDestroyed<HashSet<Thread*>> allThreads;
     static std::once_flag onceKey;
     std::call_once(onceKey, [&] {
         allThreads.construct();
@@ -307,6 +307,8 @@ Ref<Thread> Thread::create(ASCIILiteral name, Function<void()>&& entryPoint, Thr
     }
 
     ASSERT(!thread->stack().isEmpty());
+
+    thread->m_isRealtime = schedulingPolicy == SchedulingPolicy::Realtime;
     return thread;
 }
 
@@ -470,6 +472,11 @@ auto Thread::currentThreadQOS() -> QOS
 #else
     return QOS::Default;
 #endif
+}
+
+bool Thread::currentThreadIsRealtime()
+{
+    return Thread::currentSingleton().m_isRealtime;
 }
 
 #if HAVE(QOS_CLASSES)

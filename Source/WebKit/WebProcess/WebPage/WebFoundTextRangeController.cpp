@@ -28,11 +28,13 @@
 
 #include "PluginView.h"
 #include "WebPage.h"
+#include <WebCore/BoundaryPointInlines.h>
 #include <WebCore/CharacterRange.h>
 #include <WebCore/Document.h>
 #include <WebCore/DocumentInlines.h>
 #include <WebCore/DocumentMarkerController.h>
 #include <WebCore/Editor.h>
+#include <WebCore/FindRevealAlgorithms.h>
 #include <WebCore/FocusController.h>
 #include <WebCore/FrameSelection.h>
 #include <WebCore/GeometryUtilities.h>
@@ -95,7 +97,7 @@ void WebFoundTextRangeController::findTextRangesForStringMatches(const String& s
     }
 
 #if ENABLE(PDF_PLUGIN)
-    for (RefPtr frame = &m_webPage->corePage()->mainFrame(); frame; frame = frame->tree().traverseNext()) {
+    for (RefPtr frame = m_webPage->corePage()->mainFrame(); frame; frame = frame->tree().traverseNext()) {
         RefPtr localFrame = dynamicDowncast<LocalFrame>(frame.get());
         if (!localFrame)
             continue;
@@ -158,6 +160,8 @@ void WebFoundTextRangeController::decorateTextRangeWithStyle(const WebFoundTextR
             break;
         case FindDecorationStyle::Highlighted: {
             m_highlightedRange = range;
+
+            revealClosedDetailsAndHiddenUntilFoundAncestors(simpleRange->protectedStartContainer());
 
             if (m_findPageOverlay)
                 setTextIndicatorWithRange(*simpleRange);
@@ -396,7 +400,7 @@ RefPtr<WebCore::TextIndicator> WebFoundTextRangeController::createTextIndicatorF
         options.add({ WebCore::TextIndicatorOption::PaintAllContent, WebCore::TextIndicatorOption::PaintBackgrounds });
 
 #if PLATFORM(IOS_FAMILY)
-    if (RefPtr frame = m_webPage->protectedCorePage()->checkedFocusController()->focusedOrMainFrame()) {
+    if (RefPtr frame = m_webPage->corePage()->focusController().focusedOrMainFrame()) {
         frame->selection().setUpdateAppearanceEnabled(true);
         frame->selection().updateAppearance();
         frame->selection().setUpdateAppearanceEnabled(false);
@@ -465,6 +469,8 @@ Vector<WebCore::FloatRect> WebFoundTextRangeController::rectsForTextMatchesInRec
             if (!frameName.length())
                 frameName = emptyAtom();
 
+            Vector<WebFoundTextRange::PDFData> foundRanges;
+
             for (auto& [range, style] : m_decoratedRanges) {
                 if (style != FindDecorationStyle::Found)
                     continue;
@@ -472,11 +478,11 @@ Vector<WebCore::FloatRect> WebFoundTextRangeController::rectsForTextMatchesInRec
                 if (range.frameIdentifier != frameName)
                     continue;
 
-                if (auto* pdfData = std::get_if<WebFoundTextRange::PDFData>(&range.data)) {
-                    for (auto& rect : pluginView->rectsForTextMatch(*pdfData))
-                        rects.append(rect);
-                }
+                if (auto* pdfData = std::get_if<WebFoundTextRange::PDFData>(&range.data))
+                    foundRanges.append(*pdfData);
             }
+
+            rects.appendVector(pluginView->rectsForTextMatchesInRect(foundRanges, clipRect));
 
             continue;
         }
@@ -486,7 +492,7 @@ Vector<WebCore::FloatRect> WebFoundTextRangeController::rectsForTextMatchesInRec
         if (!document)
             continue;
 
-        for (auto rect : document->markers().renderedRectsForMarkers(WebCore::DocumentMarkerType::TextMatch)) {
+        for (auto rect : document->checkedMarkers()->renderedRectsForMarkers(WebCore::DocumentMarkerType::TextMatch)) {
             if (!localFrame->isMainFrame())
                 rect = mainFrameView->windowToContents(localFrame->protectedView()->contentsToWindow(enclosingIntRect(rect)));
 

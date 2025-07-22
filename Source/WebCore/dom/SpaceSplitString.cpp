@@ -86,7 +86,7 @@ struct SpaceSplitStringTableKeyTraits : public HashTraits<AtomString>
     static const int minimumTableSize = WTF::HashTableCapacityForSize<typicalNumberOfSpaceSplitString>::value;
 };
 
-typedef UncheckedKeyHashMap<AtomString, SpaceSplitStringData*, AtomStringHash, SpaceSplitStringTableKeyTraits> SpaceSplitStringTable;
+typedef HashMap<AtomString, SpaceSplitStringData*, AtomStringHash, SpaceSplitStringTableKeyTraits> SpaceSplitStringTable;
 
 static SpaceSplitStringTable& spaceSplitStringTable()
 {
@@ -145,7 +145,7 @@ bool SpaceSplitString::spaceSplitStringContainsValue(StringView spaceSplitString
 
     if (value.is8Bit())
         return spaceSplitStringContainsValueInternal<LChar>(shouldFoldCase == ShouldFoldCase::Yes ? StringView { spaceSplitString.convertToASCIILowercase() } : spaceSplitString, value);
-    return spaceSplitStringContainsValueInternal<UChar>(shouldFoldCase == ShouldFoldCase::Yes ? StringView { spaceSplitString.convertToASCIILowercase() } : spaceSplitString, value);
+    return spaceSplitStringContainsValueInternal<char16_t>(shouldFoldCase == ShouldFoldCase::Yes ? StringView { spaceSplitString.convertToASCIILowercase() } : spaceSplitString, value);
 }
 
 class TokenCounter {

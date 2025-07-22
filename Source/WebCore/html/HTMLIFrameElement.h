@@ -43,7 +43,6 @@ public:
 
     DOMTokenList& sandbox();
 
-    void setReferrerPolicyForBindings(const AtomString&);
     String referrerPolicyForBindings() const;
     ReferrerPolicy referrerPolicy() const final;
 
@@ -51,7 +50,7 @@ public:
     void setLoading(const AtomString&);
 
     String srcdoc() const;
-    ExceptionOr<void> setSrcdoc(std::variant<RefPtr<TrustedHTML>, String>&&, SubstituteData::SessionHistoryVisibility = SubstituteData::SessionHistoryVisibility::Visible);
+    ExceptionOr<void> setSrcdoc(Variant<RefPtr<TrustedHTML>, String>&&, SubstituteData::SessionHistoryVisibility = SubstituteData::SessionHistoryVisibility::Visible);
     SubstituteData::SessionHistoryVisibility srcdocSessionHistoryVisibility() const { return m_srcdocSessionHistoryVisibility; };
 
     LazyLoadFrameObserver& lazyLoadFrameObserver();
@@ -86,7 +85,7 @@ private:
     bool shouldLoadFrameLazily() final;
     bool isLazyLoadObserverActive() const final;
 
-    std::unique_ptr<DOMTokenList> m_sandbox;
+    const std::unique_ptr<DOMTokenList> m_sandbox;
     std::unique_ptr<LazyLoadFrameObserver> m_lazyLoadFrameObserver;
 #if ENABLE(CONTENT_EXTENSIONS)
     URL m_initiatorSourceURL;

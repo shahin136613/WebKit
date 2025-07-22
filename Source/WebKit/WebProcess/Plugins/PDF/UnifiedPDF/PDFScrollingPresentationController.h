@@ -105,6 +105,15 @@ private:
 
     Vector<LayerCoverage> layerCoveragesForRepaintPageCoverage(RepaintRequirements, const PDFPageCoverage&) override;
 
+    void setSelectionLayerEnabled(bool) final;
+
+    RefPtr<WebCore::GraphicsLayer> protectedContentsLayer() { return m_contentsLayer; }
+    RefPtr<WebCore::GraphicsLayer> protectedPageBackgroundsContainerLayer() { return m_pageBackgroundsContainerLayer; }
+
+#if ENABLE(PDFKIT_PAINTED_SELECTIONS)
+    RefPtr<WebCore::GraphicsLayer> protectedSelectionLayer() { return m_selectionLayer; }
+#endif
+
     RefPtr<WebCore::GraphicsLayer> m_pageBackgroundsContainerLayer;
     RefPtr<WebCore::GraphicsLayer> m_contentsLayer;
 

@@ -74,7 +74,7 @@ class EditorClient;
 class Frame;
 class FrameLoader;
 class HistoryItemClient;
-class InspectorClient;
+class InspectorBackendClient;
 class LocalFrameLoaderClient;
 class ModelPlayerProvider;
 class PaymentCoordinatorClient;
@@ -108,7 +108,7 @@ public:
         CompletionHandler<UniqueRef<LocalFrameLoaderClient>(LocalFrame&, FrameLoader&)> clientCreator;
         SandboxFlags effectiveSandboxFlags;
     };
-    using MainFrameCreationParameters = std::variant<LocalMainFrameCreationParameters, CompletionHandler<UniqueRef<RemoteFrameClient>(RemoteFrame&)>>;
+    using MainFrameCreationParameters = Variant<LocalMainFrameCreationParameters, CompletionHandler<UniqueRef<RemoteFrameClient>(RemoteFrame&)>>;
 
     WEBCORE_EXPORT PageConfiguration(
         std::optional<PageIdentifier>,
@@ -140,7 +140,7 @@ public:
         UniqueRef<CryptoClient>&&,
         UniqueRef<ProcessSyncClient>&&
 #if HAVE(DIGITAL_CREDENTIALS_UI)
-        , UniqueRef<CredentialRequestCoordinatorClient>&&
+        , Ref<CredentialRequestCoordinatorClient>&&
 #endif
     );
     WEBCORE_EXPORT ~PageConfiguration();
@@ -156,7 +156,7 @@ public:
     UniqueRef<EditorClient> editorClient;
     Ref<SocketProvider> socketProvider;
     std::unique_ptr<DragClient> dragClient;
-    std::unique_ptr<InspectorClient> inspectorClient;
+    std::unique_ptr<InspectorBackendClient> inspectorBackendClient;
 #if ENABLE(APPLE_PAY)
     Ref<PaymentCoordinatorClient> paymentCoordinatorClient;
 #endif
@@ -242,7 +242,7 @@ public:
 #endif
 
 #if HAVE(DIGITAL_CREDENTIALS_UI)
-    UniqueRef<CredentialRequestCoordinatorClient> credentialRequestCoordinatorClient;
+    Ref<CredentialRequestCoordinatorClient> credentialRequestCoordinatorClient;
 #endif
 };
 

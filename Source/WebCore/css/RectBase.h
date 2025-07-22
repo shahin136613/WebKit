@@ -55,10 +55,10 @@ protected:
     ~RectBase() = default;
 
 private:
-    Ref<const CSSValue> m_top;
-    Ref<const CSSValue> m_right;
-    Ref<const CSSValue> m_bottom;
-    Ref<const CSSValue> m_left;
+    const Ref<const CSSValue> m_top;
+    const Ref<const CSSValue> m_right;
+    const Ref<const CSSValue> m_bottom;
+    const Ref<const CSSValue> m_left;
 };
 
 } // namespace WebCore

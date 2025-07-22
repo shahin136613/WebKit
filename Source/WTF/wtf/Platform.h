@@ -69,9 +69,7 @@
 
 /* ==== Platform additions: additions to Platform.h from outside the main repository ==== */
 
-/* rdar://147082710: Temporarily work around unavailability of WebKitAdditions
-   when generating platform-enabled-swift-args.resp in installhdrs actions. */
-#if USE(APPLE_INTERNAL_SDK) && !defined(__WK_GENERATING_PLATFORM_ARGS__) && __has_include(<WebKitAdditions/AdditionalPlatform.h>)
+#if USE(APPLE_INTERNAL_SDK) && __has_include(<WebKitAdditions/AdditionalPlatform.h>)
 #include <WebKitAdditions/AdditionalPlatform.h>
 #endif
 
@@ -85,7 +83,8 @@
 
 
 #if PLATFORM(GTK)
-#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_44
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_56
+#define GLIB_VERSION_MAX_ALLOWED GLIB_VERSION_2_70
 #if USE(GTK4)
 #define GDK_VERSION_MIN_REQUIRED GDK_VERSION_4_0
 #else
@@ -94,7 +93,8 @@
 #endif
 
 #if PLATFORM(WPE)
-#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_44
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_56
+#define GLIB_VERSION_MAX_ALLOWED GLIB_VERSION_2_70
 #endif
 
 #if USE(SOUP)

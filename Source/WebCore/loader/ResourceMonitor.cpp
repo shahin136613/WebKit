@@ -26,11 +26,15 @@
 #include "config.h"
 #include "ResourceMonitor.h"
 
+#include "DiagnosticLoggingClient.h"
+#include "DiagnosticLoggingKeys.h"
 #include "Document.h"
+#include "FrameInlines.h"
 #include "FrameLoader.h"
 #include "HTMLIFrameElement.h"
 #include "LocalDOMWindow.h"
 #include "LocalFrame.h"
+#include "LocalFrameInlines.h"
 #include "LocalFrameLoaderClient.h"
 #include "Logging.h"
 #include "Page.h"
@@ -41,7 +45,7 @@ namespace WebCore {
 
 #if ENABLE(CONTENT_EXTENSIONS)
 
-#define RESOURCEMONITOR_RELEASE_LOG(fmt, ...) RELEASE_LOG_IF(m_frame, ResourceMonitoring, "ResourceMonitor(frame %" PRIu64 ")::" fmt, m_frame->frameID().object().toUInt64(), ##__VA_ARGS__)
+#define RESOURCEMONITOR_RELEASE_LOG(fmt, ...) RELEASE_LOG_IF(m_frame, ResourceMonitoring, "ResourceMonitor(frame %" PRIu64 ")::" fmt, m_frame->frameID().toUInt64(), ##__VA_ARGS__)
 
 Ref<ResourceMonitor> ResourceMonitor::create(LocalFrame& frame)
 {
@@ -119,10 +123,12 @@ void ResourceMonitor::didReceiveResponse(const URL& url, OptionSet<ContentExtens
     });
 }
 
+#if !RELEASE_LOG_DISABLED
 static ASCIILiteral eligibilityToString(ResourceMonitorEligibility eligibility)
 {
     return eligibility == ResourceMonitorEligibility::Eligible ? "eligible"_s : "not eligible"_s;
 }
+#endif
 
 void ResourceMonitor::continueAfterDidReceiveEligibility(Eligibility eligibility, const URL& url, OptionSet<ContentExtensions::ResourceType> resourceType)
 {
@@ -138,6 +144,10 @@ void ResourceMonitor::continueAfterDidReceiveEligibility(Eligibility eligibility
         ContentExtensions::resourceTypeToString(resourceType).characters(),
         eligibilityToString(eligibility).characters()
     );
+#if RELEASE_LOG_DISABLED
+    UNUSED_PARAM(url);
+    UNUSED_PARAM(resourceType);
+#endif
     setEligibility(eligibility);
 }
 
@@ -187,6 +197,15 @@ void ResourceMonitor::updateNetworkUsageThreshold(size_t threshold)
         checkNetworkUsageExcessIfNecessary();
 }
 
+static DiagnosticLoggingClient::ValueDictionary diagnosticValues()
+{
+    DiagnosticLoggingClient::ValueDictionary dictionary;
+    dictionary.set(DiagnosticLoggingKeys::unloadCountKey(), 0);
+    dictionary.set(DiagnosticLoggingKeys::unloadPreventedByThrottlerCountKey(), 0);
+    dictionary.set(DiagnosticLoggingKeys::unloadPreventedByStickyActivationCountKey(), 1);
+    return dictionary;
+}
+
 void ResourceMonitor::checkNetworkUsageExcessIfNecessary()
 {
     ASSERT(!parentResourceMonitorIfExists() || !parentResourceMonitorIfExists()->isEligible());
@@ -205,6 +224,9 @@ void ResourceMonitor::checkNetworkUsageExcessIfNecessary()
 
         // If the frame has sticky user activation, don't do offloading.
         if (RefPtr protectedWindow = frame->window(); protectedWindow && protectedWindow->hasStickyActivation()) {
+            if (RefPtr page = frame->page())
+                page->diagnosticLoggingClient().logDiagnosticMessageWithValueDictionary(DiagnosticLoggingKeys::iframeResourceMonitoringKey(), "IFrame ResourceMonitoring Throttled"_s, diagnosticValues(), ShouldSample::No);
+
             RESOURCEMONITOR_RELEASE_LOG("But the frame has sticky user activation so ignoring.");
             return;
         }

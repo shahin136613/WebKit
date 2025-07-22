@@ -34,7 +34,6 @@
 #import "LocalSampleBufferDisplayLayer.h"
 #import "Logging.h"
 #import "MediaPlayer.h"
-#import "MediaSessionManagerCocoa.h"
 #import "MediaStreamPrivate.h"
 #import "PixelBufferConformerCV.h"
 #import "PlatformDynamicRangeLimitCocoa.h"
@@ -42,15 +41,17 @@
 #import "VideoFrameMetadata.h"
 #import "VideoLayerManagerObjC.h"
 #import "VideoTrackPrivateMediaStream.h"
+#import <numbers>
 #import <objc_runtime.h>
 #import <pal/avfoundation/MediaTimeAVFoundation.h>
 #import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <wtf/HexNumber.h>
 #import <wtf/Lock.h>
+#import <wtf/MachSendRightAnnotated.h>
 #import <wtf/MainThread.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/TZoneMallocInlines.h>
-#include <wtf/text/MakeString.h>
+#import <wtf/text/MakeString.h>
 
 #import "CoreVideoSoftLink.h"
 #import <pal/cf/CoreMediaSoftLink.h>
@@ -144,7 +145,7 @@ MediaPlayerPrivateMediaStreamAVFObjC::MediaPlayerPrivateMediaStreamAVFObjC(Media
     , m_videoRotation { VideoFrameRotation::None }
     , m_logger(player->mediaPlayerLogger())
     , m_logIdentifier(player->mediaPlayerLogIdentifier())
-    , m_videoLayerManager(makeUnique<VideoLayerManagerObjC>(m_logger, m_logIdentifier))
+    , m_videoLayerManager(makeUniqueRef<VideoLayerManagerObjC>(m_logger, m_logIdentifier))
 {
     INFO_LOG(LOGIDENTIFIER);
     // MediaPlayerPrivateMediaStreamAVFObjC::processNewVideoFrame expects a weak pointer to be created in the constructor.
@@ -190,12 +191,6 @@ MediaPlayerPrivateMediaStreamAVFObjC::~MediaPlayerPrivateMediaStreamAVFObjC()
 
 class MediaPlayerFactoryMediaStreamAVFObjC final : public MediaPlayerFactory {
     WTF_MAKE_TZONE_ALLOCATED_INLINE(MediaPlayerFactoryMediaStreamAVFObjC);
-public:
-    MediaPlayerFactoryMediaStreamAVFObjC()
-    {
-        MediaSessionManagerCocoa::ensureCodecsRegistered();
-    }
-
 private:
     MediaPlayerEnums::MediaEngineIdentifier identifier() const final { return MediaPlayerEnums::MediaEngineIdentifier::AVFoundationMediaStream; };
 
@@ -291,7 +286,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::processNewVideoFrame(VideoFrame& vide
     if (!isMainThread()) {
         {
             Locker locker { m_currentVideoFrameLock };
-            m_currentVideoFrame = &videoFrame;
+            m_currentVideoFrame = videoFrame;
         }
         scheduleDeferredTask([weakThis = WeakPtr { *this }, metadata, presentationTime]() mutable {
             RefPtr protectedThis = weakThis.get();
@@ -313,7 +308,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::processNewVideoFrame(VideoFrame& vide
         return;
 
     if (!m_imagePainter.videoFrame || m_displayMode != PausedImage) {
-        m_imagePainter.videoFrame = &videoFrame;
+        m_imagePainter.videoFrame = videoFrame;
         m_imagePainter.cgImage = nullptr;
         if (m_readyState < MediaPlayer::ReadyState::HaveEnoughData)
             updateReadyState();
@@ -457,8 +452,8 @@ void MediaPlayerPrivateMediaStreamAVFObjC::layersAreInitialized(IntSize size, bo
 
     m_canEnqueueDisplayLayer = true;
 
-    if (m_layerHostingContextIDCallback)
-        m_layerHostingContextIDCallback(sampleBufferDisplayLayer->hostingContextID());
+    if (m_layerHostingContextCallback)
+        m_layerHostingContextCallback(sampleBufferDisplayLayer->hostingContext());
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::destroyLayers()
@@ -508,7 +503,7 @@ void MediaPlayerPrivateMediaStreamAVFObjC::load(MediaStreamPrivate& stream)
 
     m_intrinsicSize = { };
 
-    m_mediaStreamPrivate = &stream;
+    m_mediaStreamPrivate = stream;
     stream.addObserver(*this);
     m_ended = !stream.active();
 
@@ -1101,7 +1096,7 @@ static inline CGAffineTransform videoTransformationMatrix(VideoFrame& videoFrame
     if (!width || !height)
         return CGAffineTransformIdentity;
 
-    auto videoTransform = CGAffineTransformMakeRotation(static_cast<int>(videoFrame.rotation()) * M_PI / 180);
+    auto videoTransform = CGAffineTransformMakeRotation(static_cast<int>(videoFrame.rotation()) * std::numbers::pi / 180);
     if (videoFrame.isMirrored())
         videoTransform = CGAffineTransformScale(videoTransform, -1, 1);
 
@@ -1271,12 +1266,12 @@ std::optional<VideoFrameMetadata> MediaPlayerPrivateMediaStreamAVFObjC::videoFra
     return metadata;
 }
 
-LayerHostingContextID MediaPlayerPrivateMediaStreamAVFObjC::hostingContextID() const
+HostingContext MediaPlayerPrivateMediaStreamAVFObjC::hostingContext() const
 {
-    return m_sampleBufferDisplayLayer ? m_sampleBufferDisplayLayer->hostingContextID() : 0;
+    return m_sampleBufferDisplayLayer ? m_sampleBufferDisplayLayer->hostingContext() : HostingContext();
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::setVideoLayerSizeFenced(const FloatSize& size, WTF::MachSendRight&& fence)
+void MediaPlayerPrivateMediaStreamAVFObjC::setVideoLayerSizeFenced(const FloatSize& size, WTF::MachSendRightAnnotated&& fence)
 {
     m_isMediaLayerRehosting = false;
 
@@ -1289,13 +1284,14 @@ void MediaPlayerPrivateMediaStreamAVFObjC::setVideoLayerSizeFenced(const FloatSi
     sampleBufferDisplayLayer->updateBoundsAndPosition(*m_storedBounds, WTFMove(fence));
 }
 
-void MediaPlayerPrivateMediaStreamAVFObjC::requestHostingContextID(LayerHostingContextIDCallback&& callback)
+void MediaPlayerPrivateMediaStreamAVFObjC::requestHostingContext(LayerHostingContextCallback&& callback)
 {
-    if (auto contextID = hostingContextID()) {
-        callback(contextID);
+    auto context = hostingContext();
+    if (context.contextID) {
+        callback(context);
         return;
     }
-    m_layerHostingContextIDCallback = WTFMove(callback);
+    m_layerHostingContextCallback = WTFMove(callback);
 }
 
 void MediaPlayerPrivateMediaStreamAVFObjC::setShouldMaintainAspectRatio(bool shouldMaintainAspectRatio)

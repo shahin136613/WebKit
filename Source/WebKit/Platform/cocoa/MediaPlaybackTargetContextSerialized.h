@@ -30,7 +30,6 @@
 #include "CoreIPCAVOutputContext.h"
 #include <WebCore/MediaPlaybackTargetCocoa.h>
 #include <WebCore/MediaPlaybackTargetMock.h>
-#include <variant>
 
 namespace WebKit {
 
@@ -42,7 +41,7 @@ public:
     bool hasActiveRoute() const final { return m_hasActiveRoute; }
     bool supportsRemoteVideoPlayback() const { return m_supportsRemoteVideoPlayback; }
 
-    std::variant<WebCore::MediaPlaybackTargetContextCocoa, WebCore::MediaPlaybackTargetContextMock> platformContext() const;
+    Variant<WebCore::MediaPlaybackTargetContextCocoa, WebCore::MediaPlaybackTargetContextMock> platformContext() const;
 
     // Used by IPC serializer.
     WebCore::MediaPlaybackTargetContextType targetType() const { return m_targetType; }

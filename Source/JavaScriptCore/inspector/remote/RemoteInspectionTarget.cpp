@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2023 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,7 +57,7 @@ bool RemoteInspectionTarget::allowsInspectionByPolicy() const
         static bool allowInternalSecurityPolicies = os_variant_allows_internal_security_policies("com.apple.WebInspector");
         if (allowInternalSecurityPolicies && !RemoteInspector::singleton().isSimulatingCustomerInstall())
             return true;
-        FALLTHROUGH;
+        [[fallthrough]];
 #endif
     case Inspectable::NoIgnoringInternalPolicies:
         return false;

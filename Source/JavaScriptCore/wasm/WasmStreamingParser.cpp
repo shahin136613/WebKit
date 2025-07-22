@@ -49,7 +49,7 @@ static constexpr bool verbose = false;
 #define WASM_STREAMING_PARSER_FAIL_IF_HELPER_FAILS(helper) \
     do { \
         auto helperResult = helper; \
-        if (UNLIKELY(!helperResult)) { \
+        if (!helperResult) [[unlikely]] { \
             m_errorMessage = helperResult.error(); \
             return State::FatalError; \
         } \
@@ -113,7 +113,7 @@ auto StreamingParser::parseModuleHeader(Vector<uint8_t>&& data) -> State
     ASSERT(data.size() == moduleHeaderSize);
     dataLogLnIf(WasmStreamingParserInternal::verbose, "header validation");
     WASM_PARSER_FAIL_IF(data[0] != '\0' || data[1] != 'a' || data[2] != 's' || data[3] != 'm', "module doesn't start with '\\0asm'"_s);
-    uint32_t versionNumber = WTF::unalignedLoad<uint32_t>(data.data() + 4);
+    uint32_t versionNumber = WTF::unalignedLoad<uint32_t>(data.span().data() + 4);
     WASM_PARSER_FAIL_IF(versionNumber != expectedVersionNumber, "unexpected version number "_s, versionNumber, " expected "_s, expectedVersionNumber);
     return State::SectionID;
 }
@@ -122,7 +122,7 @@ auto StreamingParser::parseSectionID(Vector<uint8_t>&& data) -> State
 {
     ASSERT(data.size() == sectionIDSize);
     size_t offset = 0;
-    auto result = parseUInt7(data.data(), offset, data.size());
+    auto result = parseUInt7(data.span().data(), offset, data.size());
     WASM_PARSER_FAIL_IF(!result, "can't get section byte"_s);
 
     Section section = Section::Custom;
@@ -231,7 +231,7 @@ auto StreamingParser::consume(std::span<const uint8_t> bytes, size_t& offsetInBy
 
     if (m_remaining.size() > requiredSize) {
         auto result = m_remaining.subvector(0, requiredSize);
-        m_remaining.remove(0, requiredSize);
+        m_remaining.removeAt(0, requiredSize);
         m_nextOffset += requiredSize;
         return result;
     }
@@ -278,7 +278,7 @@ auto StreamingParser::consumeVarUInt32(std::span<const uint8_t> bytes, size_t& o
     if (!WTF::LEBDecoder::decodeUInt32(m_remaining, offset, result))
         return makeUnexpected(State::FatalError);
     size_t consumedSize = offset;
-    m_remaining.remove(0, consumedSize);
+    m_remaining.removeAt(0, consumedSize);
     m_nextOffset += consumedSize;
     return result;
 }
@@ -299,12 +299,12 @@ auto StreamingParser::addBytes(std::span<const uint8_t> bytes, IsEndOfStream isE
         return m_state;
 
     m_totalSize += bytes.size();
-    if (UNLIKELY(m_totalSize.hasOverflowed() || m_totalSize > maxModuleSize)) {
+    if (m_totalSize.hasOverflowed() || m_totalSize > maxModuleSize) [[unlikely]] {
         m_state = fail("module size is too large, maximum "_s, maxModuleSize);
         return m_state;
     }
 
-    if (UNLIKELY(Options::useEagerWasmModuleHashing()))
+    if (Options::useEagerWasmModuleHashing()) [[unlikely]]
         m_hasher.addBytes(bytes);
 
     size_t offsetInBytes = 0;
@@ -439,14 +439,14 @@ auto StreamingParser::finalize() -> State
         }
 
         if (m_info->numberOfDataSegments) {
-            if (UNLIKELY(m_info->data.size() != m_info->numberOfDataSegments.value())) {
+            if (m_info->data.size() != m_info->numberOfDataSegments.value()) [[unlikely]] {
                 m_state = fail("Data section's count "_s, m_info->data.size(), " is different from Data Count section's count "_s, m_info->numberOfDataSegments.value());
                 break;
             }
         }
 
         if (m_remaining.isEmpty()) {
-            if (UNLIKELY(Options::useEagerWasmModuleHashing()))
+            if (Options::useEagerWasmModuleHashing()) [[unlikely]]
                 m_info->nameSection->setHash(m_hasher.computeHexDigest());
 
             m_state = State::Finished;

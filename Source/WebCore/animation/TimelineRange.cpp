@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2024-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,12 @@
 
 #include "config.h"
 #include "TimelineRange.h"
+
 #include "CSSNumericFactory.h"
 #include "CSSPropertyParserConsumer+Timeline.h"
 #include "CSSValuePair.h"
 #include "CSSValuePool.h"
+#include "ContainerNodeInlines.h"
 #include "StyleBuilderConverter.h"
 #include "StyleBuilderState.h"
 
@@ -141,22 +143,14 @@ RefPtr<CSSValue> SingleTimelineRange::parse(TimelineRangeValue&& value, RefPtr<E
 {
     if (!element)
         return { };
-    RefPtr document = element->protectedDocument();
-    if (!document)
-        return { };
+    Ref document = element->document();
     const auto& parserContext = document->cssParserContext();
     return WTF::switchOn(value,
     [&](String& rangeString) -> RefPtr<CSSValue> {
-        CSSTokenizer tokenizer(rangeString);
-        auto tokenRange = tokenizer.tokenRange();
-        tokenRange.consumeWhitespace();
-        return CSSPropertyParserHelpers::consumeSingleAnimationRange(tokenRange, parserContext, type);
+        return CSSPropertyParserHelpers::parseSingleAnimationRange(rangeString, parserContext, type);
     },
     [&](TimelineRangeOffset& rangeOffset) -> RefPtr<CSSValue> {
-        CSSTokenizer tokenizer(rangeOffset.rangeName);
-        auto tokenRange = tokenizer.tokenRange();
-        tokenRange.consumeWhitespace();
-        if (auto consumedRangeName = CSSPropertyParserHelpers::consumeSingleAnimationRange(tokenRange, parserContext, type)) {
+        if (auto consumedRangeName = CSSPropertyParserHelpers::parseSingleAnimationRange(rangeOffset.rangeName, parserContext, type)) {
             if (rangeOffset.offset)
                 return CSSValuePair::createNoncoalescing(*consumedRangeName, *rangeOffset.offset->toCSSValue());
             return consumedRangeName;

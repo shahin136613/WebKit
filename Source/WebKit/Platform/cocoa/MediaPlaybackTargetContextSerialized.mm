@@ -55,8 +55,8 @@ MediaPlaybackTargetContextSerialized::MediaPlaybackTargetContextSerialized(const
         auto archiver = adoptNS([WKKeyedCoder new]);
         [downcast<MediaPlaybackTargetContextCocoa>(context).outputContext() encodeWithCoder:archiver.get()];
         auto dictionary = [archiver accumulatedDictionary];
-        m_contextID = (NSString *)[dictionary objectForKey:@"AVOutputContextSerializationKeyContextID"];
-        m_contextType = (NSString *)[dictionary objectForKey:@"AVOutputContextSerializationKeyContextType"];
+        m_contextID = checked_objc_cast<NSString>([dictionary objectForKey:@"AVOutputContextSerializationKeyContextID"]);
+        m_contextType = checked_objc_cast<NSString>([dictionary objectForKey:@"AVOutputContextSerializationKeyContextType"]);
 #endif
     } else if (is<MediaPlaybackTargetContextMock>(context))
         m_state = downcast<MediaPlaybackTargetContextMock>(context).state();
@@ -96,7 +96,7 @@ MediaPlaybackTargetContextSerialized::MediaPlaybackTargetContextSerialized(Strin
 }
 #endif
 
-std::variant<MediaPlaybackTargetContextCocoa, MediaPlaybackTargetContextMock> MediaPlaybackTargetContextSerialized::platformContext() const
+Variant<MediaPlaybackTargetContextCocoa, MediaPlaybackTargetContextMock> MediaPlaybackTargetContextSerialized::platformContext() const
 {
     if (m_targetType == MediaPlaybackTargetContextType::Mock)
         return MediaPlaybackTargetContextMock(m_deviceName, m_state);
@@ -107,12 +107,12 @@ std::variant<MediaPlaybackTargetContextCocoa, MediaPlaybackTargetContextMock> Me
     return MediaPlaybackTargetContextCocoa(dynamic_objc_cast<AVOutputContext>(m_context.toID()));
 #else
     auto propertyList = [NSMutableDictionary dictionaryWithCapacity:2];
-    propertyList[@"AVOutputContextSerializationKeyContextID"] = m_contextID;
-    propertyList[@"AVOutputContextSerializationKeyContextType"] = m_contextType;
+    propertyList[@"AVOutputContextSerializationKeyContextID"] = m_contextID.createNSString().get();
+    propertyList[@"AVOutputContextSerializationKeyContextType"] = m_contextType.createNSString().get();
     auto unarchiver = adoptNS([[WKKeyedCoder alloc] initWithDictionary:propertyList]);
     auto outputContext = adoptNS([[PAL::getAVOutputContextClass() alloc] initWithCoder:unarchiver.get()]);
-    // std::variant construction in older clang gives either an error, a vtable linkage error unless we construct it this way.
-    std::variant<MediaPlaybackTargetContextCocoa, MediaPlaybackTargetContextMock> variant { std::in_place_type<MediaPlaybackTargetContextCocoa>, WTFMove(outputContext) };
+    // Variant construction in older clang gives either an error, a vtable linkage error unless we construct it this way.
+    Variant<MediaPlaybackTargetContextCocoa, MediaPlaybackTargetContextMock> variant { WTF::InPlaceType<MediaPlaybackTargetContextCocoa>, WTFMove(outputContext) };
     return variant;
 #endif
 }

@@ -78,17 +78,17 @@ public:
         Complete
     };
 
-    bool openWithAccessType(AccessType, ProtectionType = { }, const String& vfs = { }, RefPtr<API::Error> = nullptr);
+    bool openWithAccessType(AccessType, RefPtr<API::Error>&, ProtectionType = { }, const String& vfs = { });
     bool enableWAL(RefPtr<API::Error>&);
 
-    void reportErrorWithCode(int, const String& query, RefPtr<API::Error> = nullptr);
-    void reportErrorWithCode(int, sqlite3_stmt* statement, RefPtr<API::Error> = nullptr);
+    void reportErrorWithCode(int, const String& query, RefPtr<API::Error>&);
+    void reportErrorWithCode(int, sqlite3_stmt* statement, RefPtr<API::Error>&);
 
     int close();
 
     sqlite3* sqlite3Handle() const { return m_db; };
     void assertQueue();
-    Ref<WorkQueue> queue() const { return m_queue; };
+    WorkQueue& queue() const { return m_queue; };
 
 private:
     RefPtr<API::Error> errorWithSQLiteErrorCode(int errorCode);
@@ -99,7 +99,7 @@ private:
 
     CString m_lastErrorMessage;
 
-    Ref<WorkQueue> m_queue;
+    const Ref<WorkQueue> m_queue;
 };
 
 }; // namespace WebKit

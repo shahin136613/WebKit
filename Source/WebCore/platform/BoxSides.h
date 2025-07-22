@@ -47,6 +47,24 @@ enum class BoxAxis : uint8_t {
     Vertical
 };
 
+// FIXME: BoxAxis etc. should just be OptionSet friendly types themselves.
+enum class BoxAxisFlag : uint8_t {
+    Horizontal = 1 << 0,
+    Vertical = 1 << 1
+};
+
+constexpr BoxAxisFlag boxAxisToFlag(BoxAxis axis)
+{
+    switch (axis) {
+    case BoxAxis::Horizontal:
+        return BoxAxisFlag::Horizontal;
+    case BoxAxis::Vertical:
+        return BoxAxisFlag::Vertical;
+    }
+    ASSERT_NOT_REACHED();
+    return BoxAxisFlag::Horizontal;
+}
+
 constexpr BoxAxis mapAxisLogicalToPhysical(const WritingMode, const LogicalBoxAxis);
 constexpr LogicalBoxAxis mapAxisPhysicalToLogical(const WritingMode, const BoxAxis);
 constexpr LogicalBoxAxis oppositeAxis(LogicalBoxAxis axis) { return axis == LogicalBoxAxis::Inline ? LogicalBoxAxis::Block : LogicalBoxAxis::Inline; }
@@ -91,6 +109,22 @@ constexpr std::array<BoxSide, 4> allBoxSides = {
     BoxSide::Bottom,
     BoxSide::Left
 };
+
+constexpr BoxSide boxSideFromFlag(BoxSideFlag flag)
+{
+    switch (flag) {
+    case BoxSideFlag::Top:
+        return BoxSide::Top;
+    case BoxSideFlag::Right:
+        return BoxSide::Right;
+    case BoxSideFlag::Bottom:
+        return BoxSide::Bottom;
+    case BoxSideFlag::Left:
+        return BoxSide::Left;
+    }
+    ASSERT_NOT_REACHED_UNDER_CONSTEXPR_CONTEXT();
+    return BoxSide::Left;
+}
 
 using BoxSideSet = OptionSet<BoxSideFlag>;
 
@@ -313,6 +347,20 @@ constexpr LogicalBoxCorner mapCornerPhysicalToLogical(const WritingMode writingM
     if (isBlockStart)
         return isInlineStart ? LogicalBoxCorner::StartStart : LogicalBoxCorner::StartEnd;
     return isInlineStart ? LogicalBoxCorner::EndStart : LogicalBoxCorner::EndEnd;
+}
+
+constexpr BoxAxis boxAxisForSide(BoxSide side)
+{
+    switch (side) {
+    case BoxSide::Top:
+    case BoxSide::Bottom:
+        return BoxAxis::Vertical;
+    case BoxSide::Left:
+    case BoxSide::Right:
+        return BoxAxis::Horizontal;
+    }
+    ASSERT_NOT_REACHED();
+    return BoxAxis::Vertical;
 }
 
 } // namespace WebCore

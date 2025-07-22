@@ -31,6 +31,7 @@
 #include "AXObjectCache.h"
 #include "Chrome.h"
 #include "ChromeClient.h"
+#include "ContainerNodeInlines.h"
 #include "DOMFormData.h"
 #include "DocumentInlines.h"
 #include "ElementChildIteratorInlines.h"
@@ -57,6 +58,7 @@
 #include "RenderMenuList.h"
 #include "RenderTheme.h"
 #include "Settings.h"
+#include <JavaScriptCore/ConsoleTypes.h>
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/MakeString.h>
 
@@ -98,7 +100,7 @@ Ref<HTMLSelectElement> HTMLSelectElement::create(Document& document)
     return adoptRef(*new HTMLSelectElement(selectTag, document, nullptr));
 }
 
-void HTMLSelectElement::didRecalcStyle(Style::Change styleChange)
+void HTMLSelectElement::didRecalcStyle(OptionSet<Style::Change> styleChange)
 {
     // Even though the options didn't necessarily change, we will call setOptionsChangedOnRenderer for its side effect
     // of recomputing the width of the element. We need to do that if the style change included a change in zoom level.
@@ -251,7 +253,7 @@ void HTMLSelectElement::remove(int optionIndex)
 
 String HTMLSelectElement::value() const
 {
-    if (protectedDocument()->requiresScriptExecutionTelemetry(ScriptTelemetryCategory::FormControls))
+    if (protectedDocument()->requiresScriptTrackingPrivacyProtection(ScriptTrackingPrivacyCategory::FormControls))
         return emptyString();
     for (auto& item : listItems()) {
         if (RefPtr option = dynamicDowncast<HTMLOptionElement>(item.get())) {
@@ -324,11 +326,11 @@ int HTMLSelectElement::defaultTabIndex() const
     return 0;
 }
 
-bool HTMLSelectElement::isKeyboardFocusable(KeyboardEvent* event) const
+bool HTMLSelectElement::isKeyboardFocusable(const FocusEventData& focusEventData) const
 {
     if (renderer())
         return isFocusable();
-    return HTMLFormControlElement::isKeyboardFocusable(event);
+    return HTMLFormControlElement::isKeyboardFocusable(focusEventData);
 }
 
 bool HTMLSelectElement::isMouseFocusable() const
@@ -435,8 +437,6 @@ void HTMLSelectElement::optionElementChildrenChanged()
     setOptionsChangedOnRenderer();
     invalidateStyleForSubtree();
     updateValidity();
-    if (CheckedPtr cache = protectedDocument()->existingAXObjectCache())
-        cache->childrenChanged(this);
 }
 
 void HTMLSelectElement::setSize(unsigned size)
@@ -811,9 +811,6 @@ void HTMLSelectElement::setRecalcListItems()
         invalidateSelectedItems();
 
     Ref document = this->document();
-    if (CheckedPtr cache = document->existingAXObjectCache())
-        cache->childrenChanged(this);
-
     if (this == document->focusedElement()) {
         if (RefPtr page = document->page())
             page->chrome().client().focusedSelectElementDidChangeOptions(*this);
@@ -832,13 +829,13 @@ void HTMLSelectElement::recalcListItems(bool updateSelectedStates, AllowStyleInv
         m_listItems.append(&option);
         if (updateSelectedStates && !m_multiple) {
             if (!firstOption)
-                firstOption = &option;
+                firstOption = option;
             if (option.selected()) {
                 if (foundSelected)
                     foundSelected->setSelectedState(false, allowStyleInvalidation);
-                foundSelected = &option;
+                foundSelected = option;
             } else if (m_size <= 1 && !foundSelected && !option.isDisabledFormControl()) {
-                foundSelected = &option;
+                foundSelected = option;
                 foundSelected->setSelectedState(true, allowStyleInvalidation);
             }
         }

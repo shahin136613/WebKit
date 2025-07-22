@@ -76,7 +76,7 @@ public:
         return m_parseStatus;
     }
 
-    void atomPatternCharacter(UChar character, bool)
+    void atomPatternCharacter(char16_t character, bool)
     {
         if (hasError())
             return;
@@ -179,7 +179,7 @@ public:
         m_floatingTerm = Term(Term::CharacterSetTerm, inverted);
     }
 
-    void atomCharacterClassAtom(UChar character)
+    void atomCharacterClassAtom(char16_t character)
     {
         if (hasError())
             return;
@@ -192,7 +192,7 @@ public:
         m_floatingTerm.addCharacter(character, m_patternIsCaseSensitive);
     }
 
-    void atomCharacterClassRange(UChar a, UChar b)
+    void atomCharacterClassRange(char16_t a, char16_t b)
     {
         if (hasError())
             return;
@@ -203,7 +203,7 @@ public:
         ASSERT(isASCII(b));
 
         for (unsigned i = a; i <= b; ++i)
-            m_floatingTerm.addCharacter(static_cast<UChar>(i), m_patternIsCaseSensitive);
+            m_floatingTerm.addCharacter(static_cast<char16_t>(i), m_patternIsCaseSensitive);
     }
 
     void atomClassStringDisjunction(Vector<Vector<char32_t>>)
@@ -216,12 +216,12 @@ public:
         // Nothing to do here.
     }
 
-    void atomCharacterClassPushNested()
+    void atomCharacterClassPushNested(bool)
     {
         // Nothing to do here.
     }
 
-    void atomCharacterClassPopNested()
+    void atomCharacterClassPopNested(bool)
     {
         // Nothing to do here.
     }
@@ -277,6 +277,9 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
     }
 
+    constexpr static bool abortedDueToError() { return false; }
+    constexpr static JSC::Yarr::ErrorCode abortErrorCode() { return JSC::Yarr::ErrorCode::NoError; }
+
 private:
     bool hasError() const
     {
@@ -331,7 +334,7 @@ private:
             bool isAfterDotStar = false;
             while (termIndex < m_sunkTerms.size()) {
                 if (isAfterDotStar && m_sunkTerms[termIndex].isKnownToMatchAnyString()) {
-                    m_sunkTerms.remove(termIndex);
+                    m_sunkTerms.removeAt(termIndex);
                     continue;
                 }
                 isAfterDotStar = false;

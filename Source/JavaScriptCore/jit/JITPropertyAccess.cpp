@@ -73,9 +73,6 @@ void JIT::emit_op_get_by_val(const JSInstruction* currentInstruction)
     if (isOperandConstantInt(property))
         stubInfo->propertyIsInt32 = true;
 
-    if (bytecode.metadata(m_profiledCodeBlock).m_seenIdentifiers.count() > Options::getByValICMaxNumberOfIdentifiers())
-        stubInfo->canBeMegamorphic = true;
-
     emitJumpSlowCaseIfNotJSCell(baseJSR, base);
     emitArrayProfilingSiteWithCellAndProfile(baseJSR.payloadGPR(), profileGPR, scratch1GPR);
 
@@ -2171,7 +2168,7 @@ void JIT::emit_op_enumerator_put_by_val(const JSInstruction* currentInstruction)
     load32(Address(baseGPR, JSCell::structureIDOffset()), scratch2GPR);
     structureMismatch.append(branch32(NotEqual, scratch2GPR, Address(scratch1GPR, JSPropertyNameEnumerator::cachedStructureIDOffset())));
     emitNonNullDecodeZeroExtendedStructureID(scratch2GPR, scratch2GPR);
-    structureMismatch.append(branchTest32(NonZero, Address(scratch2GPR, Structure::bitFieldOffset()), TrustedImm32(Structure::s_isWatchingReplacementBits)));
+    structureMismatch.append(branchTest32(NonZero, Address(scratch2GPR, Structure::bitFieldOffset()), TrustedImm32(Structure::s_hasReadOnlyOrGetterSetterPropertiesExcludingProtoBits | Structure::s_isWatchingReplacementBits)));
 
     // Compute the offset.
     emitGetVirtualRegister(index, scratch2GPR);

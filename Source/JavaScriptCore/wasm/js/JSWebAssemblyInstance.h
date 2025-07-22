@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -59,7 +59,7 @@ class WebAssemblyGCStructure;
 class WebAssemblyModuleRecord;
 
 // The layout of a JSWebAssemblyInstance is
-//     { struct JSWebAssemblyInstance }[ WasmOrJSImportableFunctionCallLinkInfo ][ Wasm::Table* ][ Global::Value ][ WebAssemblyGCStructure* ]
+//     { struct JSWebAssemblyInstance }[ WasmOrJSImportableFunctionCallLinkInfo ][ Wasm::Table* ][ Global::Value ][ WebAssemblyGCStructure* ][ Allocator* ]
 // in a compound TrailingArray-like format.
 class JSWebAssemblyInstance final : public JSNonFinalObject {
     friend class LLIntOffsetsExtractor;
@@ -78,7 +78,7 @@ public:
 
     static Identifier createPrivateModuleKey();
 
-    static JSWebAssemblyInstance* tryCreate(VM&, Structure*, JSGlobalObject*, const Identifier& moduleKey, JSWebAssemblyModule*, JSObject* importObject, Wasm::CreationMode);
+    static JSWebAssemblyInstance* tryCreate(VM&, Structure*, JSGlobalObject*, const Identifier& moduleKey, JSWebAssemblyModule*, JSObject* importObject, Wasm::CreationMode, RefPtr<SourceProvider>&&);
     static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     DECLARE_EXPORT_INFO;
@@ -132,6 +132,8 @@ public:
     void updateSoftStackLimit(void* softStackLimit) { m_softStackLimit = softStackLimit; }
 
     Wasm::Module& module() const { return m_module.get(); }
+    SourceTaintedOrigin taintedness() const { return m_sourceProvider->sourceTaintedOrigin(); }
+    URL sourceURL() const { return m_sourceProvider->sourceOrigin().url(); }
     Wasm::CalleeGroup* calleeGroup() const { return module().calleeGroupFor(memoryMode()); }
     Wasm::Table* table(unsigned);
     void setTable(unsigned, Ref<Wasm::Table>&&);
@@ -280,6 +282,10 @@ public:
     WriteBarrier<WebAssemblyGCStructure>& gcObjectStructure(unsigned numImportFunctions, unsigned numTables, unsigned numGlobals, unsigned i) { return *std::bit_cast<WriteBarrier<WebAssemblyGCStructure>*>(reinterpret_cast<char*>(this) + offsetOfGCObjectStructure(numImportFunctions, numTables, numGlobals, i)); }
     WriteBarrier<WebAssemblyGCStructure>& gcObjectStructure(unsigned typeIndex) { return gcObjectStructure(numImportFunctions(), moduleInformation().tableCount(), moduleInformation().globalCount(), typeIndex); }
 
+    static constexpr size_t offsetOfAllocatorForGCObject(unsigned numImportFunctions, unsigned numTables, unsigned numGlobals, unsigned numTypes, unsigned i) { return offsetOfGCObjectStructure(numImportFunctions, numTables, numGlobals, numTypes) + sizeof(Allocator) * i; }
+    Allocator& allocatorForGCObject(unsigned numImportFunctions, unsigned numTables, unsigned numGlobals, unsigned numTypes, unsigned i) { ASSERT(moduleInformation().hasGCObjectTypes()); return *std::bit_cast<Allocator*>(reinterpret_cast<char*>(this) + offsetOfAllocatorForGCObject(numImportFunctions, numTables, numGlobals, numTypes, i)); }
+    Allocator& allocatorForGCObject(unsigned sizeClassIndex) { return allocatorForGCObject(numImportFunctions(), moduleInformation().tableCount(), moduleInformation().globalCount(), moduleInformation().typeCount(), sizeClassIndex); }
+
     const Wasm::Tag& tag(unsigned i) const { return *m_tags[i]; }
     void setTag(unsigned, Ref<const Wasm::Tag>&&);
 
@@ -295,16 +301,12 @@ public:
     void* faultPC() const { return m_faultPC; }
 
 private:
-    JSWebAssemblyInstance(VM&, Structure*, JSWebAssemblyModule*, WebAssemblyModuleRecord*);
+    JSWebAssemblyInstance(VM&, Structure*, JSWebAssemblyModule*, WebAssemblyModuleRecord*, RefPtr<SourceProvider>&&);
     ~JSWebAssemblyInstance();
     void finishCreation(VM&);
     DECLARE_VISIT_CHILDREN;
 
-    static size_t allocationSize(Checked<size_t> numImportFunctions, Checked<size_t> numTables, Checked<size_t> numGlobals, Checked<size_t> numTypes)
-    {
-        return roundUpToMultipleOf<sizeof(Wasm::Global::Value)>(offsetOfTail() + sizeof(WasmOrJSImportableFunctionCallLinkInfo) * numImportFunctions + sizeof(Wasm::Table*) * numTables) + sizeof(Wasm::Global::Value) * numGlobals + sizeof(WriteBarrier<Structure>) * numTypes;
-    }
-
+    static size_t allocationSize(const Wasm::ModuleInformation&);
     bool evaluateConstantExpression(uint64_t, Wasm::Type, uint64_t&);
 
     VM* const m_vm;
@@ -315,7 +317,8 @@ private:
     void* m_softStackLimit { nullptr };
     CagedPtr<Gigacage::Primitive, void> m_cachedMemory;
     size_t m_cachedBoundsCheckingSize { 0 };
-    Ref<Wasm::Module> m_module;
+    const Ref<Wasm::Module> m_module;
+    RefPtr<SourceProvider> m_sourceProvider;
 
     CallFrame* m_temporaryCallFrame { nullptr };
     Wasm::Global::Value* m_globals { nullptr };

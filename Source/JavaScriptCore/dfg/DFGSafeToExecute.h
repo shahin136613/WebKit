@@ -208,7 +208,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case ArithBitXor:
     case ArithBitLShift:
     case ArithBitRShift:
-    case BitURShift:
+    case ArithBitURShift:
     case ValueToInt32:
     case UInt32ToNumber:
     case DoubleAsInt32:
@@ -239,6 +239,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case CheckArray:
     case CheckArrayOrEmpty:
     case GetScope:
+    case GetEvalScope:
     case SkipScope:
     case GetGlobalObject:
     case GetGlobalThis:
@@ -340,11 +341,14 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case DataViewGetFloat:
     case ResolveRope:
     case NumberIsNaN:
+    case NumberIsFinite:
+    case NumberIsSafeInteger:
     case StringIndexOf:
         return true;
 
+    case GlobalIsFinite:
     case GlobalIsNaN:
-        return node->child1().useKind() == DoubleRepUse;
+        return false;
 
     case GetButterfly:
         return state.forNode(node->child1()).isType(SpecObject);
@@ -410,6 +414,11 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case StringCharCodeAt:
     case StringCodePointAt:
         return node->arrayMode().alreadyChecked(graph, node, state.forNode(graph.child(node, 0)));
+
+    // We can make them non conservative by checking the condition safely.
+    case MultiGetByVal:
+    case MultiPutByVal:
+        return false;
 
     case ArrayPush:
         return node->arrayMode().alreadyChecked(graph, node, state.forNode(graph.varArgChild(node, 1)));
@@ -618,6 +627,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case RegExpTestInline:
     case RegExpMatchFast:
     case RegExpMatchFastGlobal:
+    case RegExpSearch:
     case Call:
     case DirectCall:
     case TailCallInlinedCaller:
@@ -793,6 +803,7 @@ bool safeToExecute(AbstractStateType& state, Graph& graph, Node* node, bool igno
     case ValueBitOr:
     case ValueBitLShift:
     case ValueBitRShift:
+    case ValueBitURShift:
     case ValueAdd:
     case ValueSub:
     case ValueMul:

@@ -225,12 +225,12 @@ GArray* wpe_buffer_dma_buf_formats_get_format_modifiers(WPEBufferDMABufFormats* 
 }
 
 /**
- * WPEBufferDMABufFormatsBuilder: (copy-func wpe_buffer_dma_buf_formats_builder_ref) (free-func wpe_buffer_dma_buf_formats_builder_unref)
+ * WPEBufferDMABufFormatsBuilder:
  *
  * Helper type to build a #WPEBufferDMABufFormats
  */
 struct _WPEBufferDMABufFormatsBuilder {
-    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(_WPEBufferDMABufFormatsBuilder);
 
     explicit _WPEBufferDMABufFormatsBuilder(const char* mainDevice)
         : device(mainDevice)

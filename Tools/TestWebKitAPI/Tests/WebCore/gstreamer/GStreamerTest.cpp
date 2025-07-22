@@ -31,6 +31,8 @@
 
 #include <WebCore/GStreamerCodecUtilities.h>
 #include <WebCore/GStreamerCommon.h>
+#include <WebCore/GUniquePtrGStreamer.h>
+#include <WebCore/IntSize.h>
 #include <wtf/text/MakeString.h>
 
 using namespace WebCore;
@@ -83,6 +85,14 @@ TEST_F(GStreamerTest, gstStructureGetters)
     ASSERT_TRUE(gst_structure_is_equal(structArray.at(0), s1.get()));
     ASSERT_TRUE(gst_structure_is_equal(structArray.at(1), s2.get()));
     ASSERT_EQ(structArray.size(), 2);
+
+    GUniquePtr<GstStructure> lists(gst_structure_new_from_string("bar, empty-list=(GstStructure) {}, struct-list=(GstStructure) {[s1, a=2], [s2, b=3]}"_s));
+    ASSERT_TRUE(gstStructureGetList<const GstStructure*>(lists.get(), "empty-list"_s).isEmpty());
+
+    Vector<const GstStructure*> structList(gstStructureGetList<const GstStructure*>(lists.get(), "struct-list"_s));
+    ASSERT_TRUE(gst_structure_is_equal(structList.at(0), s1.get()));
+    ASSERT_TRUE(gst_structure_is_equal(structList.at(1), s2.get()));
+    ASSERT_EQ(structList.size(), 2);
 }
 
 TEST_F(GStreamerTest, gstStructureJSONSerializing)
@@ -151,7 +161,7 @@ TEST_F(GStreamerTest, capsFromCodecString)
     using namespace GStreamerCodecUtilities;
 
 #define TEST_CAPS_FROM_CODEC(codecString, expectedInputFormat, expectedOutputCaps) G_STMT_START { \
-        auto [input, output] = capsFromCodecString(codecString);        \
+        auto [input, output] = capsFromCodecString(codecString, { });   \
         auto inputStructure = gst_caps_get_structure(input.get(), 0);   \
         const char* inputFormat = gst_structure_get_string(inputStructure, "format"); \
         ASSERT_STREQ(inputFormat, expectedInputFormat);                 \
@@ -160,7 +170,7 @@ TEST_F(GStreamerTest, capsFromCodecString)
     } G_STMT_END
 
 #define TEST_CAPS_FROM_CODEC_FULL(codecString, expectedInputCaps, expectedOutputCaps) G_STMT_START { \
-        auto [input, output] = capsFromCodecString(codecString);        \
+        auto [input, output] = capsFromCodecString(codecString, { });   \
         GUniquePtr<char> inputCaps(gst_caps_to_string(input.get()));    \
         ASSERT_STREQ(inputCaps.get(), expectedInputCaps);               \
         GUniquePtr<char> outputCaps(gst_caps_to_string(output.get()));  \

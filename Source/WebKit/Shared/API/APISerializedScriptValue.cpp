@@ -43,7 +43,7 @@ class SharedJSContextWK {
 public:
     static SharedJSContextWK& singleton()
     {
-        static MainThreadNeverDestroyed<SharedJSContextWK> sharedContext;
+        static MainRunLoopNeverDestroyed<SharedJSContextWK> sharedContext;
         return sharedContext.get();
     }
 
@@ -87,10 +87,10 @@ public:
     }
 
 private:
-    friend class NeverDestroyed<SharedJSContextWK, MainThreadAccessTraits>;
+    friend class NeverDestroyed<SharedJSContextWK, MainRunLoopAccessTraits>;
 
     SharedJSContextWK()
-        : m_timer(RunLoop::main(), this, &SharedJSContextWK::releaseContextIfNecessary)
+        : m_timer(RunLoop::mainSingleton(), this, &SharedJSContextWK::releaseContextIfNecessary)
     {
     }
 
@@ -104,9 +104,9 @@ static WKRetainPtr<WKTypeRef> valueToWKObject(JSContextRef context, JSValueRef v
     auto jsToWKString = [] (JSStringRef input) {
         size_t bufferSize = JSStringGetMaximumUTF8CStringSize(input);
         Vector<char> buffer(bufferSize);
-        size_t utf8Length = JSStringGetUTF8CString(input, buffer.data(), bufferSize);
+        size_t utf8Length = JSStringGetUTF8CString(input, buffer.mutableSpan().data(), bufferSize);
         ASSERT(buffer[utf8Length - 1] == '\0');
-        return adoptWK(WKStringCreateWithUTF8CStringWithLength(buffer.data(), utf8Length - 1));
+        return adoptWK(WKStringCreateWithUTF8CStringWithLength(buffer.span().data(), utf8Length - 1));
     };
 
     if (!JSValueIsObject(context, value)) {
@@ -165,6 +165,11 @@ WKRetainPtr<WKTypeRef> SerializedScriptValue::deserializeWK(WebCore::SerializedS
         return nullptr;
 
     return valueToWKObject(context.get(), value);
+}
+
+JSRetainPtr<JSGlobalContextRef> SerializedScriptValue::deserializationContext()
+{
+    return SharedJSContextWK::singleton().ensureContext();
 }
 
 #endif // !PLATFORM(COCOA)

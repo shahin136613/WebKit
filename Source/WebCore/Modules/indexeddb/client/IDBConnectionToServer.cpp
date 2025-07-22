@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,7 +53,7 @@ Ref<IDBConnectionToServer> IDBConnectionToServer::create(IDBConnectionToServerDe
 
 IDBConnectionToServer::IDBConnectionToServer(IDBConnectionToServerDelegate& delegate, PAL::SessionID sessionID)
     : m_delegate(delegate)
-    , m_proxy(makeUniqueWithoutRefCountedCheck<IDBConnectionProxy>(*this, sessionID))
+    , m_proxy(makeUniqueRefWithoutRefCountedCheck<IDBConnectionProxy>(*this, sessionID))
 {
 }
 
@@ -62,12 +62,6 @@ IDBConnectionToServer::~IDBConnectionToServer() = default;
 IDBConnectionIdentifier IDBConnectionToServer::identifier() const
 {
     return *m_delegate->identifier();
-}
-
-IDBConnectionProxy& IDBConnectionToServer::proxy()
-{
-    ASSERT(m_proxy);
-    return *m_proxy;
 }
 
 void IDBConnectionToServer::callResultFunctionWithErrorLater(ResultFunction function, const IDBResourceIdentifier& requestIdentifier)

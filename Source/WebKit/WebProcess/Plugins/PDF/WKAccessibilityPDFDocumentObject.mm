@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2024-2025 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -102,8 +102,7 @@
     return rectInPageCoordinates;
 }
 
-#if !PLATFORM(MAC)
-
+#if PLATFORM(IOS_FAMILY)
 - (void)setAXElements
 {
     if (!_pdfDocument) {
@@ -127,6 +126,9 @@
             _pdfDocument = plugin->pdfDocument();
     }
 
+    if (![_axElements count])
+        [self setAXElements];
+
     if (RefPtr plugin = _pdfPlugin.get())
         return plugin->accessibilityHitTestInPageForIOS(point);
     return [_pdfDocument accessibilityHitTest:point];
@@ -142,10 +144,13 @@
 
 - (BOOL)accessibilityScroll:(UIAccessibilityScrollDirection)direction
 {
-    return NO;
+    if (RefPtr plugin = _pdfPlugin.get()) {
+        if (auto coreObject = plugin->accessibilityCoreObject())
+            [coreObject->wrapper() accessibilityScroll:direction];
+    }
+    return YES;
 }
-
-#endif // !PLATFORM(MAC)
+#endif // PLATFORM(IOS_FAMILY)
 
 #if PLATFORM(MAC)
 - (BOOL)isAccessibilityElement
@@ -157,8 +162,8 @@
 {
     if (RefPtr plugin = _pdfPlugin.get()) {
         if (RefPtr activeAnnotation = plugin->activeAnnotation()) {
-            if (WebCore::AXObjectCache* existingCache = plugin->axObjectCache()) {
-                if (RefPtr object = existingCache->getOrCreate(activeAnnotation->element())) {
+            if (CheckedPtr existingCache = plugin->axObjectCache()) {
+                if (RefPtr object = existingCache->getOrCreate(activeAnnotation->protectedElement().get())) {
                 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
                     return [object->wrapper() accessibilityAttributeValue:@"_AXAssociatedPluginParent"];
                 ALLOW_DEPRECATED_DECLARATIONS_END
@@ -220,7 +225,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!protectedSelf->_parent) {
         callOnMainRunLoopAndWait([protectedSelf] {
             if (CheckedPtr axObjectCache = protectedSelf->_pdfPlugin.get()->axObjectCache()) {
-                if (RefPtr pluginAxObject = axObjectCache->getOrCreate(protectedSelf->_pluginElement.get()))
+                if (RefPtr pluginAxObject = axObjectCache->getOrCreate(RefPtr { protectedSelf->_pluginElement.get() }.get()))
                     protectedSelf->_parent = pluginAxObject->wrapper();
             }
         });
@@ -314,18 +319,18 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 - (id)accessibilityAssociatedControlForAnnotation:(PDFAnnotation *)annotation
 {
-    id wrapper = nil;
+    RetainPtr<id> wrapper;
     callOnMainRunLoopAndWait([protectedSelf = retainPtr(self), &wrapper] {
         RefPtr activeAnnotation = protectedSelf->_pdfPlugin.get()->activeAnnotation();
         if (!activeAnnotation)
             return;
 
-        if (auto* axObjectCache = protectedSelf->_pdfPlugin.get()->axObjectCache()) {
-            if (RefPtr annotationElementAxObject = axObjectCache->getOrCreate(activeAnnotation->element()))
+        if (CheckedPtr axObjectCache = protectedSelf->_pdfPlugin.get()->axObjectCache()) {
+            if (RefPtr annotationElementAxObject = axObjectCache->getOrCreate(activeAnnotation->protectedElement().get()))
                 wrapper = annotationElementAxObject->wrapper();
         }
     });
-    return wrapper;
+    return wrapper.autorelease();
 }
 
 - (void)setActiveAnnotation:(PDFAnnotation *)annotation

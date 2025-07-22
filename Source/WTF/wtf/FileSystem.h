@@ -95,7 +95,7 @@ WTF_EXPORT_PRIVATE bool updateFileModificationTime(const String& path); // Sets 
 WTF_EXPORT_PRIVATE std::optional<WallTime> fileCreationTime(const String&); // Not all platforms store file creation time.
 WTF_EXPORT_PRIVATE bool isHiddenFile(const String&);
 WTF_EXPORT_PRIVATE String pathByAppendingComponent(StringView path, StringView component);
-WTF_EXPORT_PRIVATE String pathByAppendingComponents(StringView path, const Vector<StringView>& components);
+WTF_EXPORT_PRIVATE String pathByAppendingComponents(StringView path, std::span<const StringView> components);
 WTF_EXPORT_PRIVATE String lastComponentOfPathIgnoringTrailingSlash(const String& path);
 WTF_EXPORT_PRIVATE bool makeAllDirectories(const String& path);
 WTF_EXPORT_PRIVATE String pathFileName(const String&);
@@ -172,7 +172,7 @@ WTF_EXPORT_PRIVATE String createTemporaryDirectory();
 #endif
 
 #if PLATFORM(COCOA)
-WTF_EXPORT_PRIVATE NSString *createTemporaryDirectory(NSString *directoryPrefix);
+WTF_EXPORT_PRIVATE NSString *createTemporaryDirectory(NSString *directoryPrefix = nil);
 WTF_EXPORT_PRIVATE NSString *systemDirectoryPath();
 
 // Allow reading cloud files with no local copy.

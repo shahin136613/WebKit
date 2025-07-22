@@ -63,8 +63,7 @@ public:
 
     void didPostMessage(WebPageProxy& page, FrameInfoData&&, API::ContentWorld&, JavaScriptEvaluationResult&& jsMessage) override
     {
-        Ref serializedScriptValue = API::SerializedScriptValue::createFromWireBytes(jsMessage.wireBytes());
-        auto valueAsString = serializedScriptValue->internalRepresentation().toString();
+        auto valueAsString = jsMessage.toString();
         auto tokens = StringView { valueAsString }.split(':');
         uint32_t connectionID = 0;
         uint32_t targetID = 0;
@@ -248,8 +247,8 @@ void RemoteInspectorProtocolHandler::platformStartTask(WebPageProxy& pageProxy, 
 
     auto html = htmlBuilder.toString().utf8();
     auto data = SharedBuffer::create(html.span());
-    ResourceResponse response(requestURL, "text/html"_s, html.length(), "UTF-8"_s);
-    task.didReceiveResponse(response);
+    ResourceResponse response(WTFMove(requestURL), "text/html"_s, html.length(), "UTF-8"_s);
+    task.didReceiveResponse(WTFMove(response));
     task.didReceiveData(WTFMove(data));
     task.didComplete(ResourceError());
 }

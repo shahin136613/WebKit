@@ -148,7 +148,11 @@
                 "longhands": [
                     "test-logical-property-group-physical-horizontal",
                     "test-logical-property-group-physical-vertical"
-                ]
+                ],
+                "shorthand-parser-pattern": "Values2",
+                "parser-shorthand": "testShorthandOneShorthandForParsing",
+                "parser-grammar-unused": "<'test-logical-property-group-physical-horizontal'> || <'test-logical-property-group-physical-vertical'>",
+                "parser-grammar-unused-reason": "Needs support for shorthand grammars."
             }
         },
         "test-shorthand-two": {
@@ -156,7 +160,11 @@
                 "longhands": [
                     "test-logical-property-group-logical-block",
                     "test-logical-property-group-logical-inline"
-                ]
+                ],
+                "settings-flag": "cssSettingsShorthandEnabled",
+                "shorthand-pattern": "CoalescingPair",
+                "parser-grammar-unused": "<'test-logical-property-group-logical-block'> || <'test-logical-property-group-logical-inline'>",
+                "parser-grammar-unused-reason": "Needs support for shorthand grammars."
             }
         },
         "font": {
@@ -164,7 +172,19 @@
                 "longhands": [
                     "test-sink-priority",
                     "test-high-priority"
-                ]
+                ],
+                "parser-function": "consumeFontShorthand",
+                "parser-grammar-unused": "<'test-sink-priority'> || <'test-high-priority'>",
+                "parser-grammar-unused-reason": "Needs support for shorthand grammars."
+            }
+        },
+        "all": {
+            "codegen-properties": {
+                "longhands": [
+                    "all"
+                ],
+                "skip-style-extractor": true,
+                "skip-parser": true
             }
         },
 
@@ -261,6 +281,13 @@
                 "parser-grammar": "<number>{1,2}@(type=CSSValuePair)"
             }
         },
+        "test-bounded-repetition-with-spaces-with-type-no-single-item-opt": {
+            "animation-type": "discrete",
+            "initial": "0 0",
+            "codegen-properties": {
+                "parser-grammar": "<number>{1,2}@(type=CSSValuePair no-single-item-opt)"
+            }
+        },
         "test-bounded-repetition-with-spaces-with-type-with-default-previous": {
             "animation-type": "discrete",
             "initial": "0 0",
@@ -340,7 +367,13 @@
                 "parser-grammar": "[ <number> | foo | bar | baz | [ <custom-ident> && <dashed-ident> ]@(settings-flag=cssSettingsGroupDisabled) ]"
             }
         },
-
+        "test-match-one-with-settings-flag": {
+            "animation-type": "discrete",
+            "initial": "none",
+            "codegen-properties": {
+                "parser-grammar": "none || [ foo | bar ]@(settings-flag=cssSettingsGroupDisabled)"
+            }
+        },
         "test-match-all-ordered": {
             "animation-type": "discrete",
             "initial": "0 foo 1px",
@@ -460,6 +493,62 @@
                 "parser-grammar": "[ <number> && <custom-ident>? && <length>? ]@(preserve-order no-single-item-opt)"
             }
         },
+        "test-match-all-any-order-with-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length> ]@(type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-preserve-order-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length> ]@(preserve-order type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident>? && <length>? ]@(type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-preserve-order-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident>? && <length>? ]@(preserve-order type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-multiple-required-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length>? ]@(type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-multiple-required-and-custom-type-no-single-item-opt": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length>? ]@(type=CSSCustomType no-single-item-opt)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-multiple-required-and-preserve-order-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length>? ]@(preserve-order type=CSSCustomType)"
+            }
+        },
+        "test-match-all-any-order-with-optional-and-multiple-required-and-preserve-order-and-custom-type-no-single-item-opt": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> && <custom-ident> && <length>? ]@(preserve-order type=CSSCustomType no-single-item-opt)"
+            }
+        },
         "test-match-one-or-more-any-order": {
             "animation-type": "discrete",
             "initial": "0 foo 1px",
@@ -486,6 +575,34 @@
             "initial": "0 foo 1px",
             "codegen-properties": {
                 "parser-grammar": "[ <number> || <custom-ident> || <length> ]@(preserve-order no-single-item-opt)"
+            }
+        },
+        "test-match-one-or-more-any-order-with-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> || <custom-ident> || <length> ]@(type=CSSCustomType)"
+            }
+        },
+        "test-match-one-or-more-any-order-with-custom-type-no-single-item-opt": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> || <custom-ident> || <length> ]@(type=CSSCustomType no-single-item-opt)"
+            }
+        },
+        "test-match-one-or-more-any-order-with-preserve-order-and-custom-type": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> || <custom-ident> || <length> ]@(preserve-order type=CSSCustomType)"
+            }
+        },
+        "test-match-one-or-more-any-order-with-preserve-order-and-custom-type-no-single-item-opt": {
+            "animation-type": "discrete",
+            "initial": "0 foo 1px",
+            "codegen-properties": {
+                "parser-grammar": "[ <number> || <custom-ident> || <length> ]@(preserve-order type=CSSCustomType no-single-item-opt)"
             }
         },
         "test-function-no-parameters": {
@@ -583,28 +700,16 @@
             "animation-type": "discrete",
             "initial": "currentColor",
             "codegen-properties": {
+                "color-property": true,
                 "parser-grammar": "<color>"
-            }
-        },
-        "test-color-quirky-colors": {
-            "animation-type": "discrete",
-            "initial": "currentColor",
-            "codegen-properties": {
-                "parser-grammar": "<color quirky-colors-in-quirks-mode=allowed>"
             }
         },
         "test-color-allows-types-absolute": {
             "animation-type": "discrete",
             "initial": "currentColor",
             "codegen-properties": {
+                "color-property": true,
                 "parser-grammar": "<color allowed-types=absolute>"
-            }
-        },
-        "test-color-allows-types-absolute-plus-quirky-colors": {
-            "animation-type": "discrete",
-            "initial": "currentColor",
-            "codegen-properties": {
-                "parser-grammar": "<color allowed-types=absolute quirky-colors-in-quirks-mode=allowed>"
             }
         },
         "test-image": {
@@ -633,6 +738,70 @@
             "initial": "foo",
             "codegen-properties": {
                 "parser-grammar": "foo@(aliased-to=baz) | bar"
+            }
+        },
+        "test-url-with-no-modifiers": {
+            "animation-type": "discrete",
+            "initial": "none",
+            "codegen-properties": {
+                "parser-grammar": "none | <url>"
+            }
+        },
+        "test-url-with-modifiers": {
+            "animation-type": "discrete",
+            "initial": "none",
+            "codegen-properties": {
+                "parser-grammar": "none | <url allowed-modifiers=crossorigin,integrity,referrerpolicy>"
+            }
+        },
+
+        "test-extractor-converter": {
+            "animation-type": "discrete",
+            "initial": "0",
+            "codegen-properties": {
+                "style-extractor-converter": "TestExtractorOnlyConversion",
+                "parser-grammar": "<number>"
+            }
+        },
+        "test-shared-builder-extractor-converter": {
+            "animation-type": "discrete",
+            "initial": "0",
+            "codegen-properties": {
+                "style-converter": "TestSharedBuilderExtractorConversion",
+                "parser-grammar": "<number>"
+            }
+        },
+        "test-custom-extractor": {
+            "animation-type": "discrete",
+            "initial": "0",
+            "codegen-properties": {
+                "style-extractor-custom": true,
+                "parser-grammar": "<number>"
+            }
+        },
+        "test-auto-functions": {
+            "animation-type": "discrete",
+            "initial": "0",
+            "codegen-properties": {
+                "auto-functions": true,
+                "parser-grammar": "auto | <number>"
+            }
+        },
+        "test-color-property-with-no-visited-link-support": {
+            "animation-type": "discrete",
+            "initial": "currentColor",
+            "codegen-properties": {
+                "color-property": true,
+                "parser-grammar": "<color>"
+            }
+        },
+        "test-color-property-with-visited-link-support": {
+            "animation-type": "discrete",
+            "initial": "currentColor",
+            "codegen-properties": {
+                "visited-link-color-support": true,
+                "color-property": true,
+                "parser-grammar": "<color>"
             }
         }
     },

@@ -23,6 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
+DECLARE_SYSTEM_HEADER
+
 #if ENABLE(DATA_DETECTION)
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -96,7 +100,7 @@ typedef enum __DDTextFragmentType {
 
 #if HAVE(DDSCANNER_QOS_CONFIGURATION)
 typedef enum __DDQOS {
-    DDQOSRegular = 0
+    DDQOSRegular = 0,
     DDQOSEnhanced = 2,
     DDQOSHighest = 4,
 } DDQOS;

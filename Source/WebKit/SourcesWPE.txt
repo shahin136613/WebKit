@@ -74,6 +74,7 @@ Shared/API/glib/WebKitUserMessage.cpp @no-unify
 
 Shared/glib/ArgumentCodersGLib.cpp
 Shared/glib/InputMethodState.cpp
+Shared/glib/JavaScriptEvaluationResultGLib.cpp
 Shared/glib/ProcessExecutablePathGLib.cpp
 Shared/glib/UserMessage.cpp
 Shared/glib/WebContextMenuItemGlib.cpp
@@ -208,10 +209,14 @@ UIProcess/API/wpe/WPEWebViewPlatform.cpp @no-unify
 
 UIProcess/Automation/libwpe/WebAutomationSessionLibWPE.cpp
 UIProcess/Automation/libwpe/WebAutomationSessionWPE.cpp
+UIProcess/Automation/glib/BidiBrowserAgentGlib.cpp @no-unify
 
 UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
 
 UIProcess/Gamepad/libwpe/UIGamepadProviderLibWPE.cpp
+
+UIProcess/Gamepad/wpe/GamepadProviderWPE.cpp
+UIProcess/Gamepad/wpe/PlatformGamepadWPE.cpp
 
 UIProcess/geoclue/GeoclueGeolocationProvider.cpp
 
@@ -219,6 +224,7 @@ UIProcess/glib/DRMDevice.cpp @no-unify
 UIProcess/glib/DisplayLinkGLib.cpp
 UIProcess/glib/DisplayVBlankMonitor.cpp
 UIProcess/glib/DisplayVBlankMonitorDRM.cpp
+UIProcess/glib/DisplayVBlankMonitorThreaded.cpp
 UIProcess/glib/DisplayVBlankMonitorTimer.cpp
 UIProcess/glib/FenceMonitor.cpp
 UIProcess/glib/ScreenManager.cpp
@@ -247,17 +253,22 @@ UIProcess/Notifications/glib/NotificationService.cpp
 UIProcess/WebsiteData/glib/WebsiteDataStoreGLib.cpp
 UIProcess/WebsiteData/soup/WebsiteDataStoreSoup.cpp
 
-UIProcess/libwpe/WebPasteboardProxyLibWPE.cpp
-
 UIProcess/linux/MemoryPressureMonitor.cpp
 
 UIProcess/soup/WebProcessPoolSoup.cpp
 
 UIProcess/wpe/AcceleratedBackingStoreDMABuf.cpp
+UIProcess/wpe/DisplayVBlankMonitorWPE.cpp
 UIProcess/wpe/ScreenManagerWPE.cpp
 UIProcess/wpe/SystemSettingsManagerProxyWPE.cpp
+UIProcess/wpe/WPEUtilities.cpp
 UIProcess/wpe/WebPageProxyWPE.cpp
+UIProcess/wpe/WebPasteboardProxyWPE.cpp
 UIProcess/wpe/WebPreferencesWPE.cpp
+
+UIProcess/XR/openxr/OpenXRExtensions.cpp
+UIProcess/XR/openxr/PlatformXROpenXR.cpp
+UIProcess/XR/openxr/PlatformXRSystemOpenXR.cpp
 
 WebProcess/GPU/graphics/gbm/RemoteGraphicsContextGLProxyGBM.cpp
 

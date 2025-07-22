@@ -42,7 +42,6 @@
 #include "StructureTransitionTable.h"
 #include "TypeInfoBlob.h"
 #include "Watchpoint.h"
-#include "WriteBarrierInlines.h"
 #include <wtf/Atomics.h>
 #include <wtf/CompactPointerTuple.h>
 #include <wtf/CompactPtr.h>
@@ -218,16 +217,13 @@ public:
     using SeenProperties = TinyBloomFilter<CompactPtr<UniquedStringImpl>::StorageType>;
 
     enum PolyProtoTag { PolyProto };
-    inline static Structure* create(VM&, JSGlobalObject*, JSValue prototype, const TypeInfo&, const ClassInfo*, IndexingType = NonArray, unsigned inlineCapacity = 0);
+    inline static Structure* create(VM&, JSGlobalObject*, JSValue prototype, const TypeInfo&, const ClassInfo*, IndexingType = NonArray, unsigned inlineCapacity = 0); // Defined in StructureInlines.h
     static Structure* create(PolyProtoTag, VM&, JSGlobalObject*, JSObject* prototype, const TypeInfo&, const ClassInfo*, IndexingType = NonArray, unsigned inlineCapacity = 0);
 
     ~Structure();
     
     template<typename CellType, SubspaceAccess>
-    static GCClient::IsoSubspace* subspaceFor(VM& vm)
-    {
-        return &vm.structureSpace();
-    }
+    inline static GCClient::IsoSubspace* subspaceFor(VM&); // Defined in StructureInlines.h
 
     JS_EXPORT_PRIVATE static bool isValidPrototype(JSValue);
 
@@ -252,13 +248,7 @@ protected:
     }
 
 private:
-    void finishCreation(VM& vm, CreatingEarlyCellTag)
-    {
-        Base::finishCreation(vm, this, CreatingEarlyCell);
-        ASSERT(m_prototype);
-        ASSERT(m_prototype.isNull());
-        ASSERT(!vm.structureStructure);
-    }
+    inline void finishCreation(VM&, CreatingEarlyCellTag); // Defined in StructureInlines.h
 
     void validateFlags();
 
@@ -300,6 +290,8 @@ public:
 
         return false;
     }
+
+    Structure* trySingleTransition() { return m_transitionTable.trySingleTransition(); }
 
     JS_EXPORT_PRIVATE static Structure* addPropertyTransition(VM&, Structure*, PropertyName, unsigned attributes, PropertyOffset&);
     JS_EXPORT_PRIVATE static Structure* addNewPropertyTransition(VM&, Structure*, PropertyName, unsigned attributes, PropertyOffset&, PutPropertySlot::Context = PutPropertySlot::UnknownContext, DeferredStructureTransitionWatchpointFire* = nullptr);
@@ -588,7 +580,7 @@ public:
 
         ASSERT(outOfLineSize > initialOutOfLineCapacity);
         static_assert(outOfLineGrowthFactor == 2);
-        return WTF::roundUpToPowerOfTwo(outOfLineSize);
+        return roundUpToPowerOfTwo(outOfLineSize);
     }
     
     static unsigned outOfLineSize(PropertyOffset maxOffset)
@@ -846,7 +838,7 @@ public:
     
     void startWatchingInternalPropertiesIfNecessary(VM& vm)
     {
-        if (LIKELY(didWatchInternalProperties()))
+        if (didWatchInternalProperties()) [[likely]]
             return;
         startWatchingInternalProperties(vm);
     }

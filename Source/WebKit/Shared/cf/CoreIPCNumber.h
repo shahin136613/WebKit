@@ -36,15 +36,21 @@ namespace WebKit {
 
 class CoreIPCNumber {
 public:
-    using NumberHolder = std::variant<
+    struct Long {
+        int64_t value { 0 };
+    };
+    struct UnsignedLong {
+        uint64_t value { 0 };
+    };
+    using NumberHolder = Variant<
         char,
         unsigned char,
         short,
         unsigned short,
         int,
         unsigned,
-        long,
-        unsigned long,
+        Long,
+        UnsignedLong,
         long long,
         unsigned long long,
         float,

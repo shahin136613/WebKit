@@ -4,6 +4,7 @@ configure_file(wpe-platform-wayland.pc.in ${CMAKE_BINARY_DIR}/wpe-platform-wayla
 configure_file(wpe-platform-wayland-uninstalled.pc.in ${CMAKE_BINARY_DIR}/wpe-platform-wayland-${WPE_API_VERSION}-uninstalled.pc @ONLY)
 
 set(WPEPlatformWayland_SOURCES
+    ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEClipboardWayland.cpp
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEDisplayWayland.cpp
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEInputMethodContextWaylandV1.cpp
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEInputMethodContextWaylandV3.cpp
@@ -18,13 +19,20 @@ set(WPEPlatformWayland_SOURCES
     ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/linux-explicit-synchronization-unstable-v1-protocol.c
     ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/text-input-unstable-v1-protocol.c
     ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/text-input-unstable-v3-protocol.c
-    ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/xdg-shell-protocol.c
     ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/pointer-constraints-unstable-v1-protocol.c
     ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/relative-pointer-unstable-v1-protocol.c
+    ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/xdg-shell-protocol.c
 )
+
+if (USE_SYSPROF_CAPTURE)
+    list(APPEND WPEPlatformWayland_SOURCES
+        ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-protocol.c
+    )
+endif ()
 
 set(WPEPlatformWayland_INSTALLED_HEADERS
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/wpe-wayland.h
+    ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEClipboardWayland.h
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEDisplayWayland.h
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEScreenWayland.h
     ${WEBKIT_DIR}/WPEPlatform/wpe/wayland/WPEToplevelWayland.h
@@ -38,11 +46,13 @@ set(WPEPlatformWayland_PRIVATE_INCLUDE_DIRECTORIES
 )
 
 set(WPEPlatformWayland_SYSTEM_INCLUDE_DIRECTORIES
+    ${GIO_UNIX_INCLUDE_DIRS}
     ${WAYLAND_INCLUDE_DIRS}
     ${WPEPlatform_SYSTEM_INCLUDE_DIRECTORIES}
 )
 
 set(WPEPlatformWayland_LIBRARIES
+    ${GIO_UNIX_LIBRARIES}
     ${WAYLAND_LIBRARIES}
     ${WPEPlatform_LIBRARIES}
 )
@@ -124,6 +134,21 @@ add_custom_command(
     MAIN_DEPENDENCY ${WAYLAND_PROTOCOLS_DATADIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
     COMMAND ${WAYLAND_SCANNER} client-header ${WAYLAND_PROTOCOLS_DATADIR}/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/pointer-constraints-unstable-v1-client-protocol.h
     VERBATIM)
+
+if (USE_SYSPROF_CAPTURE)
+    add_custom_command(
+        OUTPUT ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-protocol.c
+        MAIN_DEPENDENCY ${WAYLAND_PROTOCOLS_DATADIR}/stable/presentation-time/presentation-time.xml
+        DEPENDS ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-client-protocol.h
+        COMMAND ${WAYLAND_SCANNER} private-code ${WAYLAND_PROTOCOLS_DATADIR}/stable/presentation-time/presentation-time.xml ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-protocol.c
+        VERBATIM)
+
+    add_custom_command(
+        OUTPUT ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-client-protocol.h
+        MAIN_DEPENDENCY ${WAYLAND_PROTOCOLS_DATADIR}/stable/presentation-time/presentation-time.xml
+        COMMAND ${WAYLAND_SCANNER} client-header ${WAYLAND_PROTOCOLS_DATADIR}/stable/presentation-time/presentation-time.xml ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/presentation-time-client-protocol.h
+        VERBATIM)
+endif ()
 
 add_custom_command(
     OUTPUT ${WPEPlatform_DERIVED_SOURCES_DIR}/wpe/wayland/relative-pointer-unstable-v1-protocol.c

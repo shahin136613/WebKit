@@ -31,6 +31,7 @@
 #include "GraphicsContext.h"
 #include "RenderBoxInlines.h"
 #include "RenderBoxModelObjectInlines.h"
+#include "RenderObjectInlines.h"
 #include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
@@ -47,7 +48,7 @@ RenderMathMLSpace::~RenderMathMLSpace() = default;
 
 void RenderMathMLSpace::computePreferredLogicalWidths()
 {
-    ASSERT(preferredLogicalWidthsDirty());
+    ASSERT(needsPreferredLogicalWidthsUpdate());
 
     m_minPreferredLogicalWidth = m_maxPreferredLogicalWidth = spaceWidth();
 
@@ -56,7 +57,7 @@ void RenderMathMLSpace::computePreferredLogicalWidths()
 
     adjustPreferredLogicalWidthsForBorderAndPadding();
 
-    setPreferredLogicalWidthsDirty(false);
+    clearNeedsPreferredWidthsUpdate();
 }
 
 LayoutUnit RenderMathMLSpace::spaceWidth() const

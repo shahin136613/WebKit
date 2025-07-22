@@ -5,7 +5,7 @@
  *           (C) 2006 Alexey Proskuryakov (ap@nypop.com)
  * Copyright (C) 2004-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2010-2017 Google Inc. All rights reserved.
- * Copyright (C) 2011 Motorola Mobility, Inc.  All rights reserved.
+ * Copyright (C) 2011 Motorola Mobility, Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -28,6 +28,7 @@
 #include "HTMLOptionElement.h"
 
 #include "AXObjectCache.h"
+#include "ContainerNodeInlines.h"
 #include "Document.h"
 #include "DocumentInlines.h"
 #include "ElementAncestorIteratorInlines.h"
@@ -81,7 +82,7 @@ ExceptionOr<Ref<HTMLOptionElement>> HTMLOptionElement::createForLegacyFactoryFun
     }
 
     if (!value.isNull())
-        element->setValue(value);
+        element->setAttributeWithoutSynchronization(valueAttr, value);
     if (defaultSelected)
         element->setAttributeWithoutSynchronization(selectedAttr, emptyAtom());
     element->setSelected(selected);
@@ -216,12 +217,7 @@ String HTMLOptionElement::value() const
     const AtomString& value = attributeWithoutSynchronization(valueAttr);
     if (!value.isNull())
         return value;
-    return collectOptionInnerText().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
-}
-
-void HTMLOptionElement::setValue(const AtomString& value)
-{
-    setAttributeWithoutSynchronization(valueAttr, value);
+    return collectOptionInnerTextCollapsingWhitespace();
 }
 
 bool HTMLOptionElement::selected(AllowStyleInvalidation allowStyleInvalidation) const
@@ -286,21 +282,16 @@ String HTMLOptionElement::label() const
 {
     String label = attributeWithoutSynchronization(labelAttr);
     if (!label.isNull())
-        return label.trim(isASCIIWhitespace);
-    return collectOptionInnerText().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
+        return label;
+    return collectOptionInnerTextCollapsingWhitespace();
 }
 
 // Same as label() but ignores the label content attribute in quirks mode for compatibility with other browsers.
 String HTMLOptionElement::displayLabel() const
 {
     if (document().inQuirksMode())
-        return collectOptionInnerText().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
+        return collectOptionInnerTextCollapsingWhitespace();
     return label();
-}
-
-void HTMLOptionElement::setLabel(const AtomString& label)
-{
-    setAttributeWithoutSynchronization(labelAttr, label);
 }
 
 void HTMLOptionElement::willResetComputedStyle()
@@ -317,8 +308,8 @@ String HTMLOptionElement::textIndentedToRespectGroupLabel() const
 {
     RefPtr parent = parentNode();
     if (is<HTMLOptGroupElement>(parent))
-        return makeString("    "_s, displayLabel());
-    return displayLabel();
+        return makeString("    "_s, label());
+    return label();
 }
 
 bool HTMLOptionElement::isDisabledFormControl() const
@@ -339,6 +330,11 @@ String HTMLOptionElement::collectOptionInnerText() const
             text.append(textNode->data());
     }
     return text.toString();
+}
+
+String HTMLOptionElement::collectOptionInnerTextCollapsingWhitespace() const
+{
+    return collectOptionInnerText().trim(isASCIIWhitespace).simplifyWhiteSpace(isASCIIWhitespace);
 }
 
 } // namespace

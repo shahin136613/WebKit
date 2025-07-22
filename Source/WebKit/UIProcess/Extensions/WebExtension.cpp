@@ -37,6 +37,7 @@
 #include <WebCore/LocalizedStrings.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/TextResourceDecoder.h>
+#include <ranges>
 #include <wtf/FileHandle.h>
 #include <wtf/FileSystem.h>
 #include <wtf/Language.h>
@@ -390,6 +391,10 @@ bool WebExtension::isWebAccessibleResource(const URL& resourceURL, const URL& pa
             continue;
 
         for (auto& pathPattern : data.resourcePathPatterns) {
+            // Because we remove the prefix slash from the resource path, we also have to remove it from the pattern path.
+            if (pathPattern.startsWith('/'))
+                pathPattern = pathPattern.substring(1);
+
             if (WebCore::matchesWildcardPattern(pathPattern, resourcePath))
                 return true;
         }
@@ -1168,9 +1173,6 @@ void WebExtension::populateBackgroundPropertiesIfNeeded()
         m_backgroundContentIsPersistent = false;
     }
 
-    if (!m_backgroundContentIsPersistent && hasRequestedPermission("webRequest"_s))
-        recordError(createError(Error::InvalidBackgroundPersistence, WEB_UI_STRING("Non-persistent background content cannot listen to `webRequest` events.", "WKWebExtensionErrorInvalidBackgroundPersistence description for webRequest events")));
-
 #if PLATFORM(VISION)
     if (m_backgroundContentIsPersistent)
         recordError(createError(Error::InvalidBackgroundPersistence, WEB_UI_STRING("Invalid `persistent` manifest entry. A non-persistent background is required on visionOS.", "WKWebExtensionErrorInvalidBackgroundPersistence description for visionOS")));
@@ -1586,12 +1588,15 @@ void WebExtension::populateSidePanelProperties(const JSON::Object& sidePanelObje
 
 const WebExtension::PermissionsSet& WebExtension::supportedPermissions()
 {
-    static MainThreadNeverDestroyed<PermissionsSet> permissions = std::initializer_list<String> { WebExtensionPermission::activeTab(), WebExtensionPermission::alarms(), WebExtensionPermission::clipboardWrite(),
+    static MainRunLoopNeverDestroyed<PermissionsSet> permissions = std::initializer_list<String> { WebExtensionPermission::activeTab(), WebExtensionPermission::alarms(), WebExtensionPermission::clipboardWrite(),
         WebExtensionPermission::contextMenus(), WebExtensionPermission::cookies(), WebExtensionPermission::declarativeNetRequest(), WebExtensionPermission::declarativeNetRequestFeedback(),
         WebExtensionPermission::declarativeNetRequestWithHostAccess(), WebExtensionPermission::menus(), WebExtensionPermission::nativeMessaging(), WebExtensionPermission::notifications(), WebExtensionPermission::scripting(),
         WebExtensionPermission::storage(), WebExtensionPermission::tabs(), WebExtensionPermission::unlimitedStorage(), WebExtensionPermission::webNavigation(), WebExtensionPermission::webRequest(),
 #if ENABLE(WK_WEB_EXTENSIONS_SIDEBAR)
         WebExtensionPermission::sidePanel(),
+#endif
+#if ENABLE(WK_WEB_EXTENSIONS_BOOKMARKS)
+        WebExtensionPermission::bookmarks(),
 #endif
     };
     return permissions;
@@ -1971,7 +1976,7 @@ size_t WebExtension::bestIconSize(const JSON::Object& iconsObject, size_t idealP
         return 0;
 
     // Sort the remaining keys and find the next largest size.
-    std::sort(sizeValues.begin(), sizeValues.end());
+    std::ranges::sort(sizeValues);
 
     size_t bestSize = 0;
     for (auto size : sizeValues) {

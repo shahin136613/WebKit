@@ -62,7 +62,7 @@ Ref<CcidService> CcidService::create(AuthenticatorTransportServiceObserver& obse
 
 CcidService::CcidService(AuthenticatorTransportServiceObserver& observer)
     : FidoService(observer)
-    , m_restartTimer(RunLoop::main(), this, &CcidService::platformStartDiscovery)
+    , m_restartTimer(RunLoop::mainSingleton(), this, &CcidService::platformStartDiscovery)
 {
 }
 
@@ -188,8 +188,8 @@ void CcidService::updateSlots(NSArray *slots)
         [self removeObserver];
         return;
     case TKSmartCardSlotStateValidCard: {
-        auto* smartCard = [object makeSmartCard];
-        callOnMainRunLoop([service = m_service, smartCard = retainPtr(smartCard)] () mutable {
+        RetainPtr smartCard = [object makeSmartCard];
+        callOnMainRunLoop([service = m_service, smartCard = WTFMove(smartCard)] () mutable {
             if (!service)
                 return;
             service->onValidCard(WTFMove(smartCard));

@@ -22,15 +22,8 @@
 
 #pragma once
 
-#include "ColorTypes.h"
-#include "Document.h"
 #include "HTMLNames.h"
-#include "InputMode.h"
 #include "StyledElement.h"
-
-#if ENABLE(AUTOCAPITALIZE)
-#include "Autocapitalize.h"
-#endif
 
 namespace WebCore {
 
@@ -41,10 +34,16 @@ class HTMLButtonElement;
 class HTMLFormElement;
 class VisibleSelection;
 
+struct SRGBADescriptor;
+template<typename, typename> struct BoundedGammaEncoded;
+template<typename T> using SRGBA = BoundedGammaEncoded<T, SRGBADescriptor>;
+
 struct SimpleRange;
 struct TextRecognitionResult;
 
+enum class AutocapitalizeType : uint8_t;
 enum class EnterKeyHint : uint8_t;
+enum class InputMode : uint8_t;
 enum class PageIsEditable : bool;
 enum class ToggleState : bool;
 
@@ -94,7 +93,6 @@ public:
     String accessKeyLabel() const;
 
     WEBCORE_EXPORT const AtomString& dir() const;
-    WEBCORE_EXPORT void setDir(const AtomString&);
 
     virtual bool isTextControlInnerTextElement() const { return false; }
     virtual bool isSearchFieldResultsButtonElement() const { return false; }
@@ -121,7 +119,6 @@ public:
 #if ENABLE(AUTOCAPITALIZE)
     WEBCORE_EXPORT virtual AutocapitalizeType autocapitalizeType() const;
     WEBCORE_EXPORT const AtomString& autocapitalize() const;
-    WEBCORE_EXPORT void setAutocapitalize(const AtomString& value);
 #endif
 
 #if ENABLE(AUTOCORRECT)
@@ -132,11 +129,13 @@ public:
 
     WEBCORE_EXPORT InputMode canonicalInputMode() const;
     const AtomString& inputMode() const;
-    void setInputMode(const AtomString& value);
 
     WEBCORE_EXPORT EnterKeyHint canonicalEnterKeyHint() const;
     String enterKeyHint() const;
-    void setEnterKeyHint(const AtomString& value);
+
+    bool isHiddenUntilFound() const;
+    std::optional<Variant<bool, double, String>> hidden() const;
+    void setHidden(const std::optional<Variant<bool, double, String>>&);
 
     WEBCORE_EXPORT static bool shouldExtendSelectionToTargetNode(const Node& targetNode, const VisibleSelection& selectionBeforeUpdate);
 
@@ -155,10 +154,10 @@ public:
     ExceptionOr<void> showPopoverInternal(HTMLElement* = nullptr);
     ExceptionOr<void> hidePopover();
     ExceptionOr<void> hidePopoverInternal(FocusPreviousElement, FireEvents);
-    ExceptionOr<bool> togglePopover(std::optional<std::variant<WebCore::HTMLElement::TogglePopoverOptions, bool>>);
+    ExceptionOr<bool> togglePopover(std::optional<Variant<WebCore::HTMLElement::TogglePopoverOptions, bool>>);
 
     const AtomString& popover() const;
-    void setPopover(const AtomString& value) { setAttributeWithoutSynchronization(HTMLNames::popoverAttr, value); };
+    void setPopover(const AtomString& value);
     void popoverAttributeChanged(const AtomString& value);
 
     bool isValidCommandType(const CommandType) override;
@@ -197,7 +196,7 @@ protected:
 
     virtual void effectiveSpellcheckAttributeChanged(bool);
 
-    using EventHandlerNameMap = UncheckedKeyHashMap<AtomString, AtomString>;
+    using EventHandlerNameMap = HashMap<AtomString, AtomString>;
     static const AtomString& eventNameForEventHandlerAttribute(const QualifiedName& attributeName, const EventHandlerNameMap&);
 
 private:
